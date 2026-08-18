@@ -1,4 +1,33 @@
-export type Room = { id: string; type: string; live: boolean; locked: boolean; players: number; minPlayer: number; maxPlayer: number; currentPoolId: number; favoriteId: number | null }
+export type RoomPlayer = { id: number; name?: string }
+export type RoomPool = {
+  currentPool: Pool
+  pools: Pool[]
+  pendingPoolId?: number | null
+  favoriteId?: number | null
+  finishedRoundsSinceRefresh: number
+  refreshIntervalRounds: number
+}
+export type Room = {
+  roomId: string
+  state: "WAITING" | "PLAYING" | "ENDED" | "PAUSED"
+  live: boolean
+  locked: boolean
+  cycle: boolean
+  host?: number | null
+  players: RoomPlayer[]
+  monitors: RoomPlayer[]
+  chart?: unknown
+  type: "local"
+  config: {
+    minPlayer: number
+    maxPlayer: number
+    selectCountdown: number
+    readyCountdown: number
+    forceFinish: number
+    interval: number
+  }
+  pool: RoomPool
+}
 export type Pool = { id: number; chartIds: number[]; favoriteId: number | null; default: boolean }
 
 const API_BASE = "/api/v1"
@@ -6,18 +35,24 @@ const API_BASE = "/api/v1"
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? window.localStorage.getItem("zenith-token") : null
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } })
-  if (!response.ok) throw new Error(`API ${response.status}`)
+  if (!response.ok) {
+    let message = `API ${response.status}`
+    try { const error = await response.json() as { message?: string }; if (error.message) message = error.message } catch { /* keep status fallback */ }
+    throw new Error(message)
+  }
   return response.json()
 }
 
 export const api = {
+  login: (email: string, password: string) => request<{ ok: boolean; token: string; isAdmin: boolean }>("/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   rooms: () => request<{ ok: boolean; rooms: Room[] }>("/room/list"),
+  room: (id: string) => request<{ ok: boolean; info: Room }>(`/room/${encodeURIComponent(id)}/`),
   pools: () => request<{ ok: boolean; pools: Pool[] }>("/pool/list"),
   endRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}/end`, { method: "POST" }),
   deleteRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}`, { method: "DELETE" }),
   deletePool: (id: number) => request<{ ok: boolean }>(`/pool/${id}`, { method: "DELETE" }),
   createRoom: (id: string, pools: number[]) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/create`, { method: "POST", body: JSON.stringify({ type: "local", pools }) }),
-  updateRoom: (id: string, data: Partial<Room>) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
+  updateRoom: (id: string, data: { live: boolean; lock: boolean; minPlayer: number; maxPlayer: number; chatEnable: boolean; selectCountdown?: number; readyCountdown?: number; forceFinish?: number; interval?: number }) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
   createPool: (id: number, chartIds: number[]) => request<{ ok: boolean }>("/pool", { method: "POST", body: JSON.stringify({ id, chartIds }) }),
   addChart: (id: number, chartId: number) => request<{ ok: boolean }>(`/pool/${id}/chart`, { method: "POST", body: JSON.stringify({ chartId }) }),
   removeChart: (id: number, chartId: number) => request<{ ok: boolean }>(`/pool/${id}/chart/${chartId}`, { method: "DELETE" }),

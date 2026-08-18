@@ -1283,7 +1283,7 @@
                         },
                         "token": {
                           "type": "string",
-                          "description": "Phira 账号 Bearer Token"
+                          "description": "服务器签发的 JWT Bearer Token（有效期 24 小时）"
                         },
                         "isAdmin": {
                           "type": "boolean",
@@ -2243,7 +2243,7 @@
           "id": 9308133,
           "name": "权限与管理员",
           "sidebarTitle": "",
-          "content": "### 权限与管理员\n\n1. 玩家与管理员均使用 Phira 账号登录（POST /api/v1/login），返回 Bearer Token 与 isAdmin\n2. 管理员名单由服务器独立配置文件决定，与玩家登录无关\n3. 普通玩家仅可查询自己所在房间的状态与谱池\n4. 创建/删除/配置/强制结束/池管理等写操作均需管理员权限，否则 403\n5. 未登录返回 401",
+          "content": "### 权限与管理员\n\n1. 玩家与管理员均使用 Phira 账号登录（POST /api/v1/login），服务端验证身份后签发服务器自己的 JWT Bearer Token（有效期 24 小时），响应返回 token 与 isAdmin\n2. 除 login 外的所有接口均使用该 JWT 鉴权（Authorization: Bearer <JWT>），不使用 Phira 下发的 token\n3. 管理员名单由服务器独立配置文件决定，与玩家登录无关\n4. 普通玩家仅可查询自己所在房间的状态与谱池\n5. 创建/删除/配置/强制结束/池管理等写操作均需管理员权限，否则 403\n6. 未登录或 JWT 无效/过期返回 401",
           "folderId": 0,
           "type": "",
           "tags": [],
@@ -3071,7 +3071,7 @@
       "items": [
         {
           "id": 1703372,
-          "name": "Phira账号Token",
+          "name": "服务器JWT Token",
           "moduleId": 8371588,
           "authType": "bearer",
           "oasAuthType": "http",
