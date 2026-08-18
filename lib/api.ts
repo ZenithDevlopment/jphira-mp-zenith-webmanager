@@ -9,7 +9,7 @@ export type RoomPool = {
 }
 export type Room = {
   roomId: string
-  state: "WAITING" | "PLAYING" | "ENDED" | "PAUSED"
+  state: "Playing" | "WaitForReady" | "SelectChart"
   live: boolean
   locked: boolean
   cycle: boolean

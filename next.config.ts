@@ -3,7 +3,7 @@ import type { NextConfig } from "next"
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ["127.0.0.1", "localhost"],
-  output: "export",
+  output: process.env.DEV_MOCK === "true" ? undefined : "export",
   trailingSlash: true,
   images: { unoptimized: true },
   async rewrites() {
