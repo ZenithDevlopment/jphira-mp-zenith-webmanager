@@ -112,9 +112,9 @@ export default function Dashboard() {
   const canWrite = session.isAdmin
 
   return (
-    <div className={cn("min-h-screen lg:grid", sidebarCollapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[240px_1fr]")}>
+    <div className={cn("min-h-screen lg:grid lg:transition-[grid-template-columns] lg:duration-300 lg:ease-in-out", sidebarCollapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[240px_1fr]")}>
       {/* 桌面侧边栏 */}
-      <aside className={cn("sticky top-0 z-40 hidden h-screen flex-col border-r bg-card lg:flex", sidebarCollapsed ? "lg:w-[64px]" : "lg:w-[240px]")}>
+      <aside className={cn("sticky top-0 z-40 hidden h-screen flex-col border-r bg-card lg:flex lg:transition-[width] lg:duration-300 lg:ease-in-out", sidebarCollapsed ? "lg:w-[64px]" : "lg:w-[240px]")}>
         <Sidebar session={session} active={active} setActive={setActive} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} logout={logout} />
       </aside>
 
@@ -225,28 +225,18 @@ function UserMenu({ session, logout, collapsed = false }: { session: Session; lo
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {collapsed ? (
-          <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-foreground" aria-label="用户菜单">
-            <Avatar className="size-7">
-              <AvatarFallback className="size-7 text-[11px]">
-                {session.isAdmin ? <ShieldCheck className="size-4" /> : <Users className="size-4" />}
-              </AvatarFallback>
-            </Avatar>
-          </Button>
-        ) : (
-          <Button variant="ghost" className="w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-muted-foreground hover:text-foreground" aria-label="用户菜单">
-            <Avatar className="size-7">
-              <AvatarFallback className="size-7 text-[11px]">
-                {session.isAdmin ? <ShieldCheck className="size-4" /> : <Users className="size-4" />}
-              </AvatarFallback>
-            </Avatar>
-            <span className="flex min-w-0 flex-col items-start">
-              <span className="truncate text-sm font-medium">{session.isAdmin ? "管理员" : "只读用户"}</span>
-              <span className="truncate text-xs text-muted-foreground">{session.email}</span>
-            </span>
-            <ChevronsUpDown className="ml-auto size-4 shrink-0" />
-          </Button>
-        )}
+        <Button variant="ghost" className="w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-muted-foreground hover:text-foreground" aria-label="用户菜单">
+          <Avatar className="size-7 shrink-0">
+            <AvatarFallback className="size-7 text-[11px]">
+              {session.isAdmin ? <ShieldCheck className="size-4" /> : <Users className="size-4" />}
+            </AvatarFallback>
+          </Avatar>
+          <span className={cn("flex min-w-0 flex-col items-start overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>
+            <span className="truncate text-sm font-medium">{session.isAdmin ? "管理员" : "只读用户"}</span>
+            <span className="truncate text-xs text-muted-foreground">{session.email}</span>
+          </span>
+          <ChevronsUpDown className={cn("ml-auto size-4 shrink-0 transition-opacity duration-300", collapsed ? "opacity-0" : "opacity-100")} />
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={collapsed ? "start" : "end"} className="w-56">
         <DropdownMenuLabel>
@@ -266,14 +256,12 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, logout, onNa
   const handleNav = (label: string) => { setActive(label); onNavigate?.() }
   return (
     <div className="flex h-screen flex-col">
-      <div className={cn("flex h-14 shrink-0 items-center gap-2.5 border-b px-3", collapsed && "justify-center")}>
+      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"><Boxes className="size-4" /></div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">Zenith</p>
-            <p className="truncate text-[11px] leading-tight text-muted-foreground">JPhira Console</p>
-          </div>
-        )}
+        <div className={cn("min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>
+          <p className="truncate text-sm font-semibold">Zenith</p>
+          <p className="truncate text-[11px] leading-tight text-muted-foreground">JPhira Console</p>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
@@ -285,13 +273,13 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, logout, onNa
 
       <div className="flex flex-col gap-1 p-2">
         {onToggle ? (
-          <Button variant="ghost" size="sm" className={cn(collapsed ? "justify-center px-0" : "justify-start gap-2.5 px-2.5", "text-muted-foreground hover:text-foreground")} onClick={onToggle} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>
+          <Button variant="ghost" size="sm" className="justify-start gap-2.5 px-2.5 text-muted-foreground hover:text-foreground" onClick={onToggle} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>
             {collapsed ? <PanelLeftOpen className="size-4 shrink-0" /> : <PanelLeftClose className="size-4 shrink-0" />}
-            {!collapsed && <span className="truncate">收起侧边栏</span>}
+            <span className={cn("overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>收起侧边栏</span>
           </Button>
         ) : null}
       </div>
-      <div className={cn("border-t p-2", collapsed && "flex justify-center")}>
+      <div className="border-t p-2">
         <UserMenu session={session} logout={logout} collapsed={collapsed} />
       </div>
     </div>
@@ -301,9 +289,9 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, logout, onNa
 function NavButton({ label, Icon, active, collapsed, onClick }: { label: string; Icon: React.ElementType; active: string; collapsed: boolean; onClick: () => void }) {
   const isActive = active === label
   return (
-    <button onClick={onClick} title={collapsed ? label : undefined} className={cn("flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors", isActive ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground", collapsed && "justify-center px-0")}>
+    <button onClick={onClick} title={collapsed ? label : undefined} className={cn("flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors", isActive ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground")}>
       <Icon className={cn("size-4 shrink-0", isActive ? "text-foreground" : "text-muted-foreground")} />
-      {!collapsed && <span className="truncate">{label}</span>}
+      <span className={cn("overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>{label}</span>
     </button>
   )
 }
