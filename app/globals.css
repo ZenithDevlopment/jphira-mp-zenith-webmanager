@@ -115,7 +115,7 @@ body {
   to { opacity: 0; }
 }
 
-@media (max-width: 1023px) and (orientation: portrait) {
+@media (max-width: 1023px) {
   .mobile-sidebar-content[data-state="open"] {
     animation: mobile-sidebar-open 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
     transform-origin: left center;
@@ -135,7 +135,7 @@ body {
   }
 }
 
-@media (max-width: 1023px) and (orientation: portrait) and (prefers-reduced-motion: reduce) {
+@media (max-width: 1023px) and (prefers-reduced-motion: reduce) {
   .mobile-sidebar-content[data-state="open"],
   .mobile-sidebar-content[data-state="closed"],
   .mobile-sidebar-overlay[data-state="open"],
