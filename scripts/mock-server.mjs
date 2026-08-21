@@ -28,7 +28,7 @@ async function body(request) { let value = ""; for await (const chunk of request
 async function api(request, response, path) {
   path = path.length > 1 ? path.replace(/\/+$/, "") : path
   const data = request.method === "GET" || request.method === "DELETE" ? {} : await body(request)
-  if (request.method === "POST" && path === "/login") { const token = `mock-${Date.now()}-${Math.random()}`; const isAdmin = String(data.email || "").toLowerCase().includes("admin"); const userId = Math.floor(Math.random() * 100000) + 1; tokens.set(token, { isAdmin, userId }); return json(response, { ok: true, token, isAdmin, userId }) }
+  if (request.method === "POST" && path === "/login") { const token = `mock-${Date.now()}-${Math.random()}`; const isAdmin = String(data.email || "").toLowerCase().includes("admin"); const userId = 2; tokens.set(token, { isAdmin, userId }); return json(response, { ok: true, token, isAdmin, userId }) }
   if (!authorized(request, response, request.method !== "GET")) return
   if (request.method === "GET") {
     if (path === "/room/list") return json(response, { ok: true, rooms })
