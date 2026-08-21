@@ -120,7 +120,7 @@ export default function Dashboard() {
 
       {/* 移动端侧边栏（Sheet） */}
       <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-        <SheetContent side="left" className="w-[280px] gap-0 p-0">
+        <SheetContent side="left" overlayClassName="mobile-sidebar-overlay" className="mobile-sidebar-content w-[280px] gap-0 p-0">
           <SheetTitle className="sr-only">导航菜单</SheetTitle>
           <Sidebar session={session} active={active} setActive={setActive} collapsed={false} logout={logout} onNavigate={() => setMobileSidebarOpen(false)} />
         </SheetContent>
