@@ -16,8 +16,9 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { api, phiraApi, type Pool, type Room } from "@/lib/api"
+import { api, phiraApi, type PhiraUser, type Pool, type Room } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import RoomClient from "@/app/room/[id]/RoomClient"
 import PoolClient from "@/app/pool/[id]/PoolClient"
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const [collectionLoading, setCollectionLoading] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [profile, setProfile] = useState<PhiraUser | null>(null)
   const pathname = usePathname()
 
   async function load() {
@@ -90,18 +92,21 @@ export default function Dashboard() {
     let current: Session | null = null
     try { current = stored ? JSON.parse(stored) as Session : null } catch { window.localStorage.removeItem("zenith-session"); window.localStorage.removeItem("zenith-token") }
     setSession(current)
-    if (current?.token) {
-      void load()
-      if (current.userId) void fetchPhiraUser(current.userId).then(setProfile)
-    } else setLoading(false)
+    if (current?.token) { void load(); void fetchProfile(current.userId) }
+    else setLoading(false)
   }, [])
 
   const route = pathname.match(/^\/(room|pool)\/([^/]+)\/?$/)
   if (route) return route[1] === "room" ? <RoomClient id={decodeURIComponent(route[2])} /> : <PoolClient id={decodeURIComponent(route[2])} />
 
+  async function fetchProfile(userId?: number) {
+    if (!Number.isInteger(userId) || userId === undefined) { setProfile(null); return }
+    const user = await phiraApi.user(userId)
+    setProfile(user)
+  }
   async function login(event: React.FormEvent) {
     event.preventDefault(); setLoggingIn(true)
-    try { const result = await api.login(email, password); const nextSession = { token: result.token, isAdmin: result.isAdmin, email, userId: result.userId }; window.localStorage.setItem("zenith-token", result.token); window.localStorage.setItem("zenith-session", JSON.stringify(nextSession)); setSession(nextSession); if (result.userId) void fetchPhiraUser(result.userId).then(setProfile); toast.success("登录成功", { description: result.isAdmin ? "管理员权限已启用" : "当前为只读权限" }); await load() }
+    try { const result = await api.login(email, password); const nextSession = { token: result.token, isAdmin: result.isAdmin, email, userId: result.userId }; window.localStorage.setItem("zenith-token", result.token); window.localStorage.setItem("zenith-session", JSON.stringify(nextSession)); setSession(nextSession); toast.success("登录成功", { description: result.isAdmin ? "管理员权限已启用" : "当前为只读权限" }); void fetchProfile(result.userId); await load() }
     catch (reason) { toast.error("登录失败", { description: reason instanceof Error ? reason.message : "请检查账号和密码" }) }
     finally { setLoggingIn(false) }
   }
@@ -155,15 +160,15 @@ export default function Dashboard() {
   return (
     <div className={cn("min-h-screen lg:grid lg:transition-[grid-template-columns] lg:duration-300 lg:ease-in-out", sidebarCollapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[240px_1fr]")}>
       {/* 桌面侧边栏 */}
-      <aside className={cn("sticky top-0 z-40 hidden h-screen flex-col border-r bg-card lg:flex lg:transition-[width] lg:duration-300 lg:ease-in-out", sidebarCollapsed ? "lg:w-[64px]" : "lg:w-[240px]")}>
-        <Sidebar session={session} profile={profile} active={active} setActive={setActive} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} logout={logout} />
+      <aside className={cn("sticky top-0 z-40 hidden h-screen flex-col border-r bg-card lg:flex", sidebarCollapsed ? "lg:w-[64px]" : "lg:w-[240px]")}>
+        <Sidebar session={session} active={active} setActive={setActive} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} logout={logout} profile={profile} />
       </aside>
 
       {/* 移动端侧边栏（Sheet） */}
       <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
         <SheetContent side="left" overlayClassName="mobile-sidebar-overlay" className="mobile-sidebar-content w-[280px] gap-0 p-0">
           <SheetTitle className="sr-only">导航菜单</SheetTitle>
-          <Sidebar session={session} profile={profile} active={active} setActive={setActive} collapsed={false} logout={logout} onNavigate={() => setMobileSidebarOpen(false)} />
+          <Sidebar session={session} active={active} setActive={setActive} collapsed={false} onClose={() => setMobileSidebarOpen(false)} logout={logout} onNavigate={() => setMobileSidebarOpen(false)} profile={profile} />
         </SheetContent>
       </Sheet>
 
@@ -267,23 +272,34 @@ export default function Dashboard() {
   )
 }
 
-function UserMenu({ session, profile, logout, collapsed = false }: { session: Session; profile: PhiraUser | null; logout: () => void; collapsed?: boolean }) {
+function UserMenu({ session, logout, collapsed = false, profile }: { session: Session; logout: () => void; collapsed?: boolean; profile?: PhiraUser | null }) {
   const displayName = profile?.name || (session.isAdmin ? "管理员" : "只读用户")
-  const avatarUrl = profile?.avatar
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-muted-foreground hover:text-foreground" aria-label="用户菜单">
-          <Avatar className="size-7 shrink-0">
-            {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} className="size-7" /> : null}
-            <AvatarFallback className="size-7 text-[11px]">
-              {session.isAdmin ? <ShieldCheck className="size-4" /> : <Users className="size-4" />}
-            </AvatarFallback>
-          </Avatar>
-          <span className={cn("flex min-w-0 flex-col items-start overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-sm font-medium">{displayName}</span>
-              {session.isAdmin && <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px] font-medium text-primary">管理</Badge>}
+        {collapsed ? (
+          <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-foreground" aria-label="用户菜单">
+            <Avatar className="size-7">
+              {profile?.avatar && <AvatarImage src={profile.avatar} alt={profile.name} />}
+              <AvatarFallback className="size-7 text-[11px]">
+                {session.isAdmin ? <ShieldCheck className="size-4" /> : <Users className="size-4" />}
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+        ) : (
+          <Button variant="ghost" className="w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-muted-foreground hover:text-foreground" aria-label="用户菜单">
+            <Avatar className="size-7">
+              {profile?.avatar && <AvatarImage src={profile.avatar} alt={profile.name} />}
+              <AvatarFallback className="size-7 text-[11px]">
+                {session.isAdmin ? <ShieldCheck className="size-4" /> : <Users className="size-4" />}
+              </AvatarFallback>
+            </Avatar>
+            <span className="flex min-w-0 flex-col items-start">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-sm font-medium">{displayName}</span>
+                {session.isAdmin && <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-tight">管理</Badge>}
+              </span>
+              <span className="truncate text-xs text-muted-foreground">{session.email}</span>
             </span>
             <span className="truncate text-xs text-muted-foreground">{session.email}</span>
           </span>
@@ -291,6 +307,14 @@ function UserMenu({ session, profile, logout, collapsed = false }: { session: Se
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={collapsed ? "start" : "end"} className="w-56">
+        <DropdownMenuLabel>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium">{displayName}</p>
+            {session.isAdmin && <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-tight">管理</Badge>}
+          </div>
+          <p className="text-xs font-normal text-muted-foreground">{session.email}</p>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
           <LogOut className="size-4" />退出登录
         </DropdownMenuItem>
@@ -299,7 +323,7 @@ function UserMenu({ session, profile, logout, collapsed = false }: { session: Se
   )
 }
 
-function Sidebar({ session, profile, active, setActive, collapsed, onToggle, logout, onNavigate }: { session: Session; profile: PhiraUser | null; active: string; setActive: (value: string) => void; collapsed: boolean; onToggle?: () => void; logout: () => void; onNavigate?: () => void }) {
+function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, logout, onNavigate, profile }: { session: Session; active: string; setActive: (value: string) => void; collapsed: boolean; onToggle?: () => void; onClose?: () => void; logout: () => void; onNavigate?: () => void; profile?: PhiraUser | null }) {
   const handleNav = (label: string) => { setActive(label); onNavigate?.() }
   return (
     <div className="flex h-screen flex-col">
@@ -326,8 +350,8 @@ function Sidebar({ session, profile, active, setActive, collapsed, onToggle, log
           </Button>
         ) : null}
       </div>
-      <div className="border-t p-2">
-        <UserMenu session={session} profile={profile} logout={logout} collapsed={collapsed} />
+      <div className={cn("border-t p-2", collapsed && "flex justify-center")}>
+        <UserMenu session={session} logout={logout} collapsed={collapsed} profile={profile} />
       </div>
     </div>
   )

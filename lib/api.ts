@@ -66,6 +66,18 @@ export type PhiraCollection = {
   charts: PhiraChart[]
 }
 export type PhiraSearchResult = { count: number; results: PhiraChart[] }
+export type PhiraUser = {
+  id: number
+  name: string
+  avatar: string | null
+  bio: string | null
+  rks: number
+  language: string
+  roles: string[]
+  badges: string[]
+  follower_count: number
+  following_count: number
+}
 
 const API_BASE = "/api/v1"
 const PHIRA_API_BASE = "https://phira.5wyxi.com"
@@ -95,6 +107,7 @@ async function phiraToken(): Promise<string | null> {
 export const phiraApi = {
   chart: (id: number) => phira<PhiraChart>(`/chart/${id}`),
   collection: (id: number) => phira<PhiraCollection>(`/collection/${id}`),
+  user: (id: number) => phira<PhiraUser>(`/user/${id}`),
   search: async (query: string, page = 1, pageNum = 20, order = "-updated") => {
     const token = await phiraToken()
     if (!token) return null
