@@ -30,7 +30,77 @@ export type Room = {
 }
 export type Pool = { id: number; chartIds: number[]; favoriteId: number | null; default: boolean }
 
+export type PhiraChart = {
+  id: number
+  name: string
+  level: string | null
+  difficulty: number
+  charter: string | null
+  composer: string | null
+  illustrator: string | null
+  description: string | null
+  ranked: boolean
+  reviewed: boolean
+  stable: boolean
+  illustration: string | null
+  preview: string | null
+  file: string | null
+  uploader: number
+  tags: string[]
+  rating: number
+  ratingCount: number
+  created: string
+  updated: string
+  chartUpdated: string
+}
+export type PhiraCollection = {
+  id: number
+  owner: number
+  name: string
+  description: string | null
+  created: string
+  updated: string
+  cover: string | null
+  public: boolean
+  likes: number
+  charts: PhiraChart[]
+}
+export type PhiraSearchResult = { count: number; results: PhiraChart[] }
+
 const API_BASE = "/api/v1"
+const PHIRA_API_BASE = "https://phira.5wyxi.com"
+
+// 测试账号 token（临时）：生产环境由后端下发 phira_token 存入 localStorage
+const PHIRA_TEST_EMAIL = "i@07210700.xyz"
+const PHIRA_TEST_PASSWORD = "asd123456"
+
+async function phira<T>(path: string, init?: RequestInit): Promise<T | null> {
+  try {
+    const response = await fetch(`${PHIRA_API_BASE}${path}`, init)
+    if (!response.ok) return null
+    return await response.json() as T
+  } catch { return null }
+}
+async function phiraToken(): Promise<string | null> {
+  const stored = typeof window !== "undefined" ? window.localStorage.getItem("phira-token") : null
+  if (stored) return stored
+  // 本地没有真实 token 时，临时用测试账号换取（仅开发用）
+  const login = await fetch(`${PHIRA_API_BASE}/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: PHIRA_TEST_EMAIL, password: PHIRA_TEST_PASSWORD }) })
+  if (!login.ok) return null
+  const data = await login.json() as { token?: string }
+  if (!data.token) return null
+  if (typeof window !== "undefined") window.localStorage.setItem("phira-token", data.token)
+  return data.token
+}
+export const phiraApi = {
+  chart: (id: number) => phira<PhiraChart>(`/chart/${id}`),
+  collection: (id: number) => phira<PhiraCollection>(`/collection/${id}`),
+  search: async (query: string, page = 1, pageNum = 20, order = "-updated") => {
+    const token = await phiraToken()
+    if (!token) return null
+    return phira<PhiraSearchResult>(`/chart?pageNum=${pageNum}&page=${page}&order=${order}&search=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${token}` } })
+  },
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? window.localStorage.getItem("zenith-token") : null

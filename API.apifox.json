@@ -1285,6 +1285,10 @@
                           "type": "string",
                           "description": "服务器签发的 JWT Bearer Token（有效期 24 小时）"
                         },
+                        "phira_token": {
+                          "type": "string",
+                          "description": "请求 Phira 成功登录之后 Phira 账号的 Token"
+                        },
                         "isAdmin": {
                           "type": "boolean",
                           "x-apifox-mock": "false",

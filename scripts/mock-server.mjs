@@ -11,7 +11,7 @@ const port = Number(process.env.PORT || 8080)
 const nextPort = Number(process.env.DEV_NEXT_PORT || 0)
 const tokens = new Map()
 const pools = [
-  { id: 0, chartIds: [1024, 1028, 1104, 1200, 1215], favoriteId: 1024, default: true },
+  { id: 0, chartIds: [74673, 74615, 74166, 74086, 74665], favoriteId: 1024, default: true },
   { id: 1, chartIds: [2048, 2050, 2077], favoriteId: null, default: false },
   { id: 2, chartIds: [3001, 3018, 3090, 3112], favoriteId: 3018, default: false },
 ]
