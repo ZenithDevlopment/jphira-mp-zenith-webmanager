@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { api, type Pool, type Room } from "@/lib/api"
+import { api, phiraApi, type Pool, type Room } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import RoomClient from "@/app/room/[id]/RoomClient"
 import PoolClient from "@/app/pool/[id]/PoolClient"
@@ -68,6 +68,8 @@ export default function Dashboard() {
   const [roomPools, setRoomPools] = useState("0")
   const [poolId, setPoolId] = useState("")
   const [chartIds, setChartIds] = useState("")
+  const [poolFavoriteId, setPoolFavoriteId] = useState("")
+  const [collectionLoading, setCollectionLoading] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const pathname = usePathname()
@@ -119,9 +121,24 @@ export default function Dashboard() {
     event.preventDefault()
     void action(() => api.createRoom(roomId.trim(), roomPools.split(",").map(Number).filter(Number.isFinite)), "房间已创建").then(() => { setRoomId(""); setCreateTarget(null) })
   }
-  function createPool(event: React.FormEvent) {
+  async function createPool(event: React.FormEvent) {
     event.preventDefault()
-    void action(() => api.createPool(Number(poolId), chartIds.split(",").map(Number).filter(Number.isFinite)), "谱池已创建").then(() => { setPoolId(""); setChartIds(""); setCreateTarget(null) })
+    const id = Number(poolId)
+    const favoriteId = poolFavoriteId.trim() ? Number(poolFavoriteId) : null
+    if (!Number.isInteger(id)) { toast.error("池 ID 无效"); return }
+    let ids = chartIds.split(",").map(Number).filter(Number.isFinite)
+    if (favoriteId !== null) {
+      setCollectionLoading(true)
+      try {
+        const collection = await phiraApi.collection(favoriteId)
+        if (!collection) { toast.error("未找到该收藏夹，请检查 ID"); return }
+        ids = collection.charts.map((chart) => chart.id)
+      } finally {
+        setCollectionLoading(false)
+      }
+    }
+    if (favoriteId === null && ids.length === 0) { toast.error("请填写谱面 ID 或收藏夹 ID"); return }
+    void action(() => api.createPool(id, ids, favoriteId), "谱池已创建").then(() => { setPoolId(""); setChartIds(""); setPoolFavoriteId(""); setCreateTarget(null) })
   }
 
   const filteredRooms = rooms.filter((room) => room.roomId.toLowerCase().includes(query.toLowerCase()))
@@ -229,12 +246,17 @@ export default function Dashboard() {
                   <Input id="create-pool-id" autoFocus required type="number" value={poolId} onChange={(event) => setPoolId(event.target.value)} placeholder="3" />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="create-pool-charts">谱面 ID（逗号分隔）</Label>
-                  <Input id="create-pool-charts" required value={chartIds} onChange={(event) => setChartIds(event.target.value)} placeholder="4001,4002" />
+                  <Label htmlFor="create-pool-charts">谱面 ID（逗号分隔，可留空）</Label>
+                  <Input id="create-pool-charts" value={chartIds} onChange={(event) => setChartIds(event.target.value)} placeholder="4001,4002" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="create-pool-favorite">收藏夹 ID（可选）</Label>
+                  <Input id="create-pool-favorite" type="number" value={poolFavoriteId} onChange={(event) => setPoolFavoriteId(event.target.value)} placeholder="例如 74879" />
+                  <p className="text-xs text-muted-foreground">填写后会自动用该收藏夹的全部谱面创建谱池，谱面输入框可留空。</p>
                 </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel>取消</AlertDialogCancel>
-                  <Button type="submit"><Plus className="size-4" />新增谱池</Button>
+                  <Button type="submit" disabled={collectionLoading}>{collectionLoading && <Loader2 className="size-4 animate-spin" />}{collectionLoading ? "获取收藏夹中..." : "新增谱池"}</Button>
                 </AlertDialogFooter>
               </form>
             </>

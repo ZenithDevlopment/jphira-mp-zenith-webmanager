@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 type ChartDetail = { data: PhiraChart; error?: boolean }
@@ -47,6 +48,10 @@ export default function PoolClient({ id }: { id: string }) {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [search, setSearch] = useState<SearchState>({ query: "", page: 1, loading: false, results: null, count: 0, error: false })
+  const [importingCollection, setImportingCollection] = useState(false)
+  const [batchCollectionId, setBatchCollectionId] = useState("")
+  const [batchPreview, setBatchPreview] = useState<{ loading: boolean; data: PhiraCollection | null; notFound: boolean }>({ loading: false, data: null, notFound: false })
+  const [addTab, setAddTab] = useState("id")
 
   async function load() {
     try { const result = await api.pools(); const found = result.pools.find((item) => item.id === Number(poolId)); if (!found) throw new Error("谱池不存在"); setPool(found); setFavoriteId(found.favoriteId === null ? "" : String(found.favoriteId)) } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载谱池") }
@@ -64,6 +69,21 @@ export default function PoolClient({ id }: { id: string }) {
       if (charts[id]?.data?.name) continue
       const data = await phiraApi.chart(id)
       setCharts((prev) => ({ ...prev, [id]: data ? { data } : { data: { id } as PhiraChart, error: true } }))
+    }
+  }
+  async function importCollectionCharts() {
+    if (!collection.data) return
+    const ids = collection.data.charts.map((chart) => chart.id)
+    if (!ids.length) return
+    setImportingCollection(true)
+    setError("")
+    try {
+      await api.addCharts(pool!.id, ids)
+      await load()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "导入失败")
+    } finally {
+      setImportingCollection(false)
     }
   }
   async function loadCollection() {
@@ -91,6 +111,19 @@ export default function PoolClient({ id }: { id: string }) {
     const data = await phiraApi.chart(id)
     setIdPreview({ loading: false, data, notFound: !data })
   }
+  async function previewCollection() {
+    const id = Number(batchCollectionId)
+    if (!Number.isInteger(id) || id < 0) return
+    setBatchPreview({ loading: true, data: null, notFound: false })
+    const data = await phiraApi.collection(id)
+    setBatchPreview({ loading: false, data, notFound: !data })
+  }
+  async function importBatchCollection() {
+    if (!batchPreview.data) return
+    const ids = batchPreview.data.charts.map((chart) => chart.id)
+    if (!ids.length) return
+    void action(() => api.addCharts(pool!.id, ids)).then(() => { setBatchCollectionId(""); setBatchPreview({ loading: false, data: null, notFound: false }); setAddOpen(false) })
+  }
   async function doSearch(page = 1) {
     const query = search.query.trim()
     if (!query) return
@@ -101,7 +134,7 @@ export default function PoolClient({ id }: { id: string }) {
   function addFromSearch(chart: PhiraChart) {
     void action(() => api.addChart(pool!.id, chart.id)).then(() => setAddOpen(false))
   }
-  function openDialog() { setAddOpen(true); setAddId(""); setIdPreview({ loading: false, data: null, notFound: false }); setSearch({ query: "", page: 1, loading: false, results: null, count: 0, error: false }) }
+  function openDialog() { setAddOpen(true); setAddTab("id"); setAddId(""); setIdPreview({ loading: false, data: null, notFound: false }); setSearch({ query: "", page: 1, loading: false, results: null, count: 0, error: false }); setBatchCollectionId(""); setBatchPreview({ loading: false, data: null, notFound: false }) }
   async function confirmDeleteChart(idToDelete: number) {
     if (pool && pool.chartIds.length <= 1) return
     setDeletingId(idToDelete)
@@ -285,6 +318,12 @@ export default function PoolClient({ id }: { id: string }) {
                 <Button asChild variant="outline">
                   <Link href={`https://phira.5wyxi.com/collection/${collection.data!.id}`} target="_blank" rel="noreferrer"><ExternalLink className="size-4" />在 Phira 打开</Link>
                 </Button>
+                {isAdmin && (
+                  <Button onClick={() => void importCollectionCharts()} disabled={importingCollection || collection.data!.charts.length === 0}>
+                    {importingCollection ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                    一键导入谱面
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -300,93 +339,134 @@ export default function PoolClient({ id }: { id: string }) {
           <DialogContent className="max-w-2xl ease-in-out">
             <DialogHeader>
               <DialogTitle>添加谱面</DialogTitle>
-              <DialogDescription>输入谱面 ID 先查谱确认，或直接搜索谱面后点击添加。</DialogDescription>
+              <DialogDescription>按谱面 ID、关键词搜索，或从收藏夹批量导入谱面。</DialogDescription>
             </DialogHeader>
 
             <div className="flex flex-col gap-4">
-              {/* ID 直接添加：先查谱确认 */}
-              <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void previewId() }}>
-                <Input type="number" value={addId} onChange={(event) => { setAddId(event.target.value); setIdPreview({ loading: false, data: null, notFound: false }) }} placeholder="输入谱面 ID，例如 74673" autoFocus />
-                <Button type="submit" variant="outline" disabled={busy || !addId || idPreview.loading}><Search className="size-4" />查谱</Button>
-              </form>
+              <Tabs value={addTab} onValueChange={setAddTab}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="id">按 ID</TabsTrigger>
+                  <TabsTrigger value="search">搜索</TabsTrigger>
+                  <TabsTrigger value="collection">收藏夹</TabsTrigger>
+                </TabsList>
 
-              {idPreview.loading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在获取谱面...</div>
-              )}
-              {idPreview.notFound && (
-                <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">未找到该谱面，请检查 ID。</p>
-              )}
-              {idPreview.data && (
-                <div className="flex flex-wrap items-center gap-4 rounded-md border p-3">
-                  {idPreview.data.illustration ? (
-                    <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md">
-                      <Image src={idPreview.data.illustration} alt={idPreview.data.name} fill unoptimized className="object-cover" />
-                    </div>
-                  ) : (
-                    <div className="flex h-[72px] w-32 shrink-0 items-center justify-center rounded-md bg-muted/40"><Star className="size-5 text-muted-foreground" /></div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="line-clamp-1 font-medium">{idPreview.data.name}</p>
-                      <Badge variant={levelBadgeVariant(idPreview.data.level || "")}>{idPreview.data.level || `${idPreview.data.difficulty.toFixed(1)}`}</Badge>
-                    </div>
-                    <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{idPreview.data.composer} · 谱师 {idPreview.data.charter}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">#{idPreview.data.id} · {fmtRating(idPreview.data.rating)} · {idPreview.data.ratingCount} 人</p>
-                  </div>
-                  <Button onClick={addById} disabled={busy}><Plus className="size-4" />确认添加</Button>
-                </div>
-              )}
+                {/* ID 直接添加：先查谱确认 */}
+                <TabsContent value="id" className="mt-4">
+                  <div className="flex flex-col gap-4">
+                    <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void previewId() }}>
+                      <Input type="number" value={addId} onChange={(event) => { setAddId(event.target.value); setIdPreview({ loading: false, data: null, notFound: false }) }} placeholder="输入谱面 ID，例如 74673" />
+                      <Button type="submit" variant="outline" disabled={busy || !addId || idPreview.loading}><Search className="size-4" />查谱</Button>
+                    </form>
 
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="h-px flex-1 bg-border" />或搜索谱面<div className="h-px flex-1 bg-border" />
-              </div>
-
-              {/* 关键词搜索 */}
-              <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void doSearch(1) }}>
-                <Input value={search.query} onChange={(event) => setSearch((prev) => ({ ...prev, query: event.target.value }))} placeholder="搜索谱面名称 / 曲师 / 谱师" />
-                <Button type="submit" variant="outline" disabled={busy || !search.query.trim() || search.loading}><Search className="size-4" />搜索</Button>
-              </form>
-
-              {search.loading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在搜索...</div>
-              )}
-              {search.error && (
-                <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">搜索失败，请稍后重试。</p>
-              )}
-              {search.results && (
-                <>
-                  <p className="text-xs text-muted-foreground">共 {search.count} 条结果，点击谱面添加。</p>
-                  <ScrollArea className="max-h-[300px]">
-                    <div className="flex flex-col gap-2 pr-3">
-                      {search.results.map((chart) => (
-                        <button key={chart.id} type="button" onClick={() => addFromSearch(chart)} disabled={busy} className="flex items-center gap-3 rounded-md border p-2 text-left transition-colors hover:border-primary/50 hover:bg-muted/40">
-                          {chart.illustration ? (
-                            <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded">
-                              <Image src={chart.illustration} alt={chart.name} fill unoptimized className="object-cover" />
-                            </div>
-                          ) : (
-                            <div className="flex h-11 w-20 shrink-0 items-center justify-center rounded bg-muted/40"><Star className="size-4 text-muted-foreground" /></div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="line-clamp-1 text-sm font-medium">{chart.name}</p>
-                              <Badge variant={levelBadgeVariant(chart.level || "")}>{chart.level || `${chart.difficulty.toFixed(1)}`}</Badge>
-                            </div>
-                            <p className="line-clamp-1 text-xs text-muted-foreground">{chart.composer} · 谱师 {chart.charter}</p>
-                            <p className="text-xs text-muted-foreground">#{chart.id} · {fmtRating(chart.rating)}</p>
+                    {idPreview.loading && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在获取谱面...</div>
+                    )}
+                    {idPreview.notFound && (
+                      <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">未找到该谱面，请检查 ID。</p>
+                    )}
+                    {idPreview.data && (
+                      <div className="flex flex-wrap items-center gap-4 rounded-md border p-3">
+                        {idPreview.data.illustration ? (
+                          <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md">
+                            <Image src={idPreview.data.illustration} alt={idPreview.data.name} fill unoptimized className="object-cover" />
                           </div>
-                          <Plus className="size-4 shrink-0 text-muted-foreground" />
-                        </button>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                  {search.count > search.results.length && (
-                    <div className="flex justify-center">
-                      <Button variant="ghost" size="sm" onClick={() => void doSearch(search.page + 1)} disabled={busy || search.loading}>加载更多</Button>
-                    </div>
-                  )}
-                </>
-              )}
+                        ) : (
+                          <div className="flex h-[72px] w-32 shrink-0 items-center justify-center rounded-md bg-muted/40"><Star className="size-5 text-muted-foreground" /></div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="line-clamp-1 font-medium">{idPreview.data.name}</p>
+                            <Badge variant={levelBadgeVariant(idPreview.data.level || "")}>{idPreview.data.level || `${idPreview.data.difficulty.toFixed(1)}`}</Badge>
+                          </div>
+                          <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{idPreview.data.composer} · 谱师 {idPreview.data.charter}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">#{idPreview.data.id} · {fmtRating(idPreview.data.rating)} · {idPreview.data.ratingCount} 人</p>
+                        </div>
+                        <Button onClick={addById} disabled={busy}><Plus className="size-4" />确认添加</Button>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                {/* 关键词搜索 */}
+                <TabsContent value="search" className="mt-4">
+                  <div className="flex flex-col gap-4">
+                    <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void doSearch(1) }}>
+                      <Input value={search.query} onChange={(event) => setSearch((prev) => ({ ...prev, query: event.target.value }))} placeholder="搜索谱面名称 / 曲师 / 谱师" />
+                      <Button type="submit" variant="outline" disabled={busy || !search.query.trim() || search.loading}><Search className="size-4" />搜索</Button>
+                    </form>
+
+                    {search.loading && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在搜索...</div>
+                    )}
+                    {search.error && (
+                      <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">搜索失败，请稍后重试。</p>
+                    )}
+                    {search.results && (
+                      <>
+                        <p className="text-xs text-muted-foreground">共 {search.count} 条结果，点击谱面添加。</p>
+                        <ScrollArea className="max-h-[300px]">
+                          <div className="flex flex-col gap-2 pr-3">
+                            {search.results.map((chart) => (
+                              <button key={chart.id} type="button" onClick={() => addFromSearch(chart)} disabled={busy} className="flex items-center gap-3 rounded-md border p-2 text-left transition-colors hover:border-primary/50 hover:bg-muted/40">
+                                {chart.illustration ? (
+                                  <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded">
+                                    <Image src={chart.illustration} alt={chart.name} fill unoptimized className="object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="flex h-11 w-20 shrink-0 items-center justify-center rounded bg-muted/40"><Star className="size-4 text-muted-foreground" /></div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="line-clamp-1 text-sm font-medium">{chart.name}</p>
+                                    <Badge variant={levelBadgeVariant(chart.level || "")}>{chart.level || `${chart.difficulty.toFixed(1)}`}</Badge>
+                                  </div>
+                                  <p className="line-clamp-1 text-xs text-muted-foreground">{chart.composer} · 谱师 {chart.charter}</p>
+                                  <p className="text-xs text-muted-foreground">#{chart.id} · {fmtRating(chart.rating)}</p>
+                                </div>
+                                <Plus className="size-4 shrink-0 text-muted-foreground" />
+                              </button>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                        {search.count > search.results.length && (
+                          <div className="flex justify-center">
+                            <Button variant="ghost" size="sm" onClick={() => void doSearch(search.page + 1)} disabled={busy || search.loading}>加载更多</Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </TabsContent>
+
+                {/* 收藏夹批量导入 */}
+                <TabsContent value="collection" className="mt-4">
+                  <div className="flex flex-col gap-4">
+                    <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void previewCollection() }}>
+                      <Input type="number" value={batchCollectionId} onChange={(event) => { setBatchCollectionId(event.target.value); setBatchPreview({ loading: false, data: null, notFound: false }) }} placeholder="输入收藏夹 ID，例如 74879" />
+                      <Button type="submit" variant="outline" disabled={busy || !batchCollectionId || batchPreview.loading}><Search className="size-4" />查收藏夹</Button>
+                    </form>
+                    {batchPreview.loading && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在获取收藏夹...</div>
+                    )}
+                    {batchPreview.notFound && (
+                      <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">未找到该收藏夹，请检查 ID。</p>
+                    )}
+                    {batchPreview.data && (
+                      <div className="flex flex-wrap items-center gap-4 rounded-md border p-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="line-clamp-1 font-medium">{batchPreview.data.name}</p>
+                            <Badge variant="outline">{batchPreview.data.charts.length} 张谱面</Badge>
+                            {batchPreview.data.public && <Badge variant="secondary">公开</Badge>}
+                          </div>
+                          {batchPreview.data.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{batchPreview.data.description}</p>}
+                        </div>
+                        <Button onClick={() => void importBatchCollection()} disabled={busy || batchPreview.data.charts.length === 0}><Plus className="size-4" />导入 {batchPreview.data.charts.length} 张谱面</Button>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           </DialogContent>
         </Dialog>
