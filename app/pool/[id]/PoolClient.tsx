@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft, Check, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Search, Star, Trash2, X } from "lucide-react"
+import { ArrowLeft, Check, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Search, Star, Trash2, TriangleAlert, X } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { api, phiraApi, type PhiraChart, type PhiraCollection, type Pool } from "@/lib/api"
@@ -11,8 +11,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 type ChartDetail = { data: PhiraChart; error?: boolean }
 type CollectionDetail = { loaded: boolean; notFound: boolean; data: PhiraCollection | null }
@@ -42,6 +44,8 @@ export default function PoolClient({ id }: { id: string }) {
   const [addOpen, setAddOpen] = useState(false)
   const [addId, setAddId] = useState("")
   const [idPreview, setIdPreview] = useState<{ loading: boolean; data: PhiraChart | null; notFound: boolean }>({ loading: false, data: null, notFound: false })
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
   const [search, setSearch] = useState<SearchState>({ query: "", page: 1, loading: false, results: null, count: 0, error: false })
 
   async function load() {
@@ -98,12 +102,27 @@ export default function PoolClient({ id }: { id: string }) {
     void action(() => api.addChart(pool!.id, chart.id)).then(() => setAddOpen(false))
   }
   function openDialog() { setAddOpen(true); setAddId(""); setIdPreview({ loading: false, data: null, notFound: false }); setSearch({ query: "", page: 1, loading: false, results: null, count: 0, error: false }) }
+  async function confirmDeleteChart(idToDelete: number) {
+    if (pool && pool.chartIds.length <= 1) return
+    setDeletingId(idToDelete)
+    setError("")
+    try {
+      await api.removeChart(pool!.id, idToDelete)
+      await load()
+      setDeleteConfirm(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "移除失败")
+    } finally {
+      setDeletingId(null)
+    }
+  }
   if (error && !pool) return <DetailState message={error} />
   if (!pool) return <DetailState message="正在加载谱池..." loading />
   const collectionInfo = collection.data && !collection.notFound
 
   return (
-    <main className="p-5 lg:p-8">
+    <TooltipProvider delayDuration={300}>
+      <main className="p-5 lg:p-8">
       <div className="mx-auto max-w-5xl">
         <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />返回控制台</Link>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -189,8 +208,33 @@ export default function PoolClient({ id }: { id: string }) {
                             </p>
                             {isAdmin && (
                               <div className="flex shrink-0 gap-1">
-                                <Button variant="ghost" size="sm" title="修改谱面 ID" onClick={() => { setEditingId(id); setReplacementId(String(id)) }} disabled={busy}><Pencil className="size-4" /></Button>
-                                <Button variant="ghost" size="sm" title="移除谱面" onClick={() => void action(() => api.removeChart(pool.id, id))} disabled={busy || pool.chartIds.length <= 1}><Trash2 className="size-4" /></Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="sm" onClick={() => { setEditingId(id); setReplacementId(String(id)) }} disabled={busy}><Pencil className="size-4" /></Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>修改谱面 ID</TooltipContent>
+                                </Tooltip>
+                                <Popover open={deleteConfirm === id} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(id)} disabled={busy || pool.chartIds.length <= 1} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-4" /></Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-64 bg-background p-4 text-foreground shadow-md border">
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive"><TriangleAlert className="size-4" /></div>
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium">删除谱面 #{id}</p>
+                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">确认从谱池移除这张谱面？此操作无法撤销。</p>
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 flex justify-end gap-2">
+                                      <Button size="sm" variant="outline" className="h-8 px-3 text-xs" onClick={() => setDeleteConfirm(null)} disabled={deletingId !== null}>取消</Button>
+                                      <Button size="sm" variant="destructive" className="h-8 px-3 text-xs" onClick={() => void confirmDeleteChart(id)} disabled={deletingId !== null}>
+                                        {deletingId === id && <Loader2 className="size-3.5 animate-spin" />}
+                                        确认
+                                      </Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               </div>
                             )}
                           </div>
@@ -353,7 +397,8 @@ export default function PoolClient({ id }: { id: string }) {
           </DialogContent>
         </Dialog>
       </div>
-    </main>
+      </main>
+    </TooltipProvider>
   )
 }
 

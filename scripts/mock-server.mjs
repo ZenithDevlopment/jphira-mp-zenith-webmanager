@@ -49,7 +49,7 @@ async function api(request, response, path) {
     const defaultPool = path.match(/^\/pool\/(\d+)\/default$/); if (defaultPool) { const item = pool(Number(defaultPool[1])); if (!item) return fail(response, "谱池不存在", 404); pools.forEach((candidate) => { candidate.default = false }); item.default = Boolean(data.enabled); return json(response, { ok: true }) }
   }
   if (request.method === "DELETE") {
-    const chart = path.match(/^\/pool\/(\d+)\/chart\/(\d+)$/); if (chart) { const item = pool(Number(chart[1])); if (!item) return fail(response, "谱池不存在", 404); if (item.chartIds.length <= 1) return fail(response, "不能删除最后一张谱面"); item.chartIds = item.chartIds.filter((id) => id !== Number(chart[2])); return json(response, { ok: true }) }
+    const chart = path.match(/^\/pool\/(\d+)\/chart\/(\d+)$/); if (chart) { await new Promise((r) => setTimeout(r, 1500)); const item = pool(Number(chart[1])); if (!item) return fail(response, "谱池不存在", 404); if (item.chartIds.length <= 1) return fail(response, "不能删除最后一张谱面"); item.chartIds = item.chartIds.filter((id) => id !== Number(chart[2])); return json(response, { ok: true }) }
     const poolMatch = path.match(/^\/pool\/(\d+)$/); if (poolMatch) { const index = pools.findIndex((item) => item.id === Number(poolMatch[1])); if (index < 0) return fail(response, "谱池不存在", 404); pools.splice(index, 1); return json(response, { ok: true }) }
     const roomMatch = path.match(/^\/room\/([^/]+)$/); if (roomMatch) { const index = rooms.findIndex((item) => item.roomId === decodeURIComponent(roomMatch[1])); if (index < 0) return fail(response, "房间不存在", 404); rooms.splice(index, 1); return json(response, { ok: true }) }
   }
