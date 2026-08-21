@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 type ChartDetail = { data: PhiraChart; error?: boolean }
 type CollectionDetail = { loaded: boolean; notFound: boolean; data: PhiraCollection | null }
@@ -152,15 +152,10 @@ export default function PoolClient({ id }: { id: string }) {
                 const error = detail?.error
                 return (
                   <div key={id} className="group relative overflow-hidden rounded-lg border bg-card transition-colors hover:border-primary/40">
-                    {chart?.illustration && !editingId ? (
+                    {chart?.illustration ? (
                       <div className="relative aspect-video w-full overflow-hidden">
                         <Image src={chart.illustration} alt={chart.name || String(id)} fill unoptimized className="object-cover" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                        <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
-                          {typeof chart.difficulty === "number" && chart.difficulty > 0 && (
-                            <span className="inline-flex items-center rounded-full bg-black/60 px-2 py-0.5 text-xs font-semibold backdrop-blur">{chart.level || `${chart.difficulty.toFixed(1)}`}</span>
-                          )}
-                        </div>
                         <div className="absolute inset-x-2 bottom-2">
                           <p className="line-clamp-1 text-sm font-medium text-white text-shadow">{chart.name || `#${id}`}</p>
                         </div>
@@ -169,11 +164,8 @@ export default function PoolClient({ id }: { id: string }) {
                       <div className="relative flex aspect-video w-full items-center justify-center bg-muted/40">
                         {error ? (
                           <p className="text-xs text-muted-foreground">无法获取谱面</p>
-                        ) : !editingId ? (
+                        ) : (
                           <Skeleton className="h-16 w-3/5" />
-                        ) : null}
-                        {editingId === id && (
-                          <p className="absolute bottom-2 left-2 rounded bg-background/80 px-1.5 py-0.5 text-xs font-mono text-muted-foreground">{id}</p>
                         )}
                         {chart?.name && (
                           <p className="absolute bottom-2 left-2 right-2 line-clamp-1 text-xs font-medium text-muted-foreground">{chart.name}</p>
@@ -182,15 +174,7 @@ export default function PoolClient({ id }: { id: string }) {
                     )}
 
                     <div className="space-y-2 p-3">
-                      {editingId === id ? (
-                        <div className="flex gap-1">
-                          <Input autoFocus type="number" value={replacementId} onChange={(event) => setReplacementId(event.target.value)} placeholder={String(id)} />
-                          <Button size="sm" title="保存" onClick={() => replaceChart(id)} disabled={busy}><Check className="size-4" /></Button>
-                          <Button variant="ghost" size="sm" title="取消" onClick={() => { setEditingId(null); setReplacementId("") }} disabled={busy}><X className="size-4" /></Button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="font-mono text-sm font-medium">#{id}</p>
                               <p className="line-clamp-1 text-xs text-muted-foreground">{chart?.composer || "未知曲师"}</p>
@@ -198,7 +182,6 @@ export default function PoolClient({ id }: { id: string }) {
                             {typeof chart?.difficulty === "number" && (
                               <div className="flex shrink-0 items-center gap-1.5">
                                 <Badge variant={levelBadgeVariant(chart.level || "")}>{chart.level || `${chart.difficulty.toFixed(1)}`}</Badge>
-                                {typeof chart.rating === "number" && <Badge variant="outline">{fmtRating(chart.rating)}</Badge>}
                               </div>
                             )}
                           </div>
@@ -208,12 +191,25 @@ export default function PoolClient({ id }: { id: string }) {
                             </p>
                             {isAdmin && (
                               <div className="flex shrink-0 gap-1">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="sm" onClick={() => { setEditingId(id); setReplacementId(String(id)) }} disabled={busy}><Pencil className="size-4" /></Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>修改谱面 ID</TooltipContent>
-                                </Tooltip>
+                                <Popover open={editingId === id} onOpenChange={(open) => { if (open) setEditingId(id); else { setEditingId(null); setReplacementId("") } }}>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="sm" disabled={busy}><Pencil className="size-4" /></Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-64 bg-background p-4 text-foreground shadow-md border">
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"><Pencil className="size-4" /></div>
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium">修改谱面 ID</p>
+                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">将这张谱面替换为新的谱面 ID。</p>
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 flex gap-1">
+                                      <Input autoFocus type="number" value={replacementId} onChange={(event) => setReplacementId(event.target.value)} placeholder={String(id)} />
+                                      <Button size="sm" title="保存" onClick={() => replaceChart(id)} disabled={busy}><Check className="size-4" /></Button>
+                                      <Button variant="ghost" size="sm" title="取消" onClick={() => { setEditingId(null); setReplacementId("") }} disabled={busy}><X className="size-4" /></Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                                 <Popover open={deleteConfirm === id} onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}>
                                   <PopoverTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(id)} disabled={busy || pool.chartIds.length <= 1} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-4" /></Button>
@@ -238,8 +234,6 @@ export default function PoolClient({ id }: { id: string }) {
                               </div>
                             )}
                           </div>
-                        </>
-                      )}
                     </div>
                   </div>
                 )
