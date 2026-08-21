@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { Activity, Boxes, ChevronsUpDown, CircleHelp, Database, DoorOpen, Loader2, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, X, Zap } from "lucide-react"
+import { Activity, Boxes, ChevronsUpDown, CircleHelp, Database, DoorOpen, Loader2, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, Zap } from "lucide-react"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
@@ -122,7 +122,7 @@ export default function Dashboard() {
       <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
         <SheetContent side="left" className="w-[280px] gap-0 p-0">
           <SheetTitle className="sr-only">导航菜单</SheetTitle>
-          <Sidebar session={session} active={active} setActive={setActive} collapsed={false} onClose={() => setMobileSidebarOpen(false)} logout={logout} onNavigate={() => setMobileSidebarOpen(false)} />
+          <Sidebar session={session} active={active} setActive={setActive} collapsed={false} logout={logout} onNavigate={() => setMobileSidebarOpen(false)} />
         </SheetContent>
       </Sheet>
 
@@ -262,38 +262,36 @@ function UserMenu({ session, logout, collapsed = false }: { session: Session; lo
   )
 }
 
-function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, logout, onNavigate }: { session: Session; active: string; setActive: (value: string) => void; collapsed: boolean; onToggle?: () => void; onClose?: () => void; logout: () => void; onNavigate?: () => void }) {
+function Sidebar({ session, active, setActive, collapsed, onToggle, logout, onNavigate }: { session: Session; active: string; setActive: (value: string) => void; collapsed: boolean; onToggle?: () => void; logout: () => void; onNavigate?: () => void }) {
   const handleNav = (label: string) => { setActive(label); onNavigate?.() }
   return (
     <div className="flex h-screen flex-col">
-      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"><Boxes className="size-4" /></div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">Zenith</p>
-              <p className="truncate text-[11px] leading-tight text-muted-foreground">JPhira Console</p>
-            </div>
-          )}
-        </div>
-        {onToggle ? (
-          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={onToggle} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>
-            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          </Button>
-        ) : onClose ? (
-          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="关闭侧边栏"><X className="size-4" /></Button>
-        ) : null}
+      <div className={cn("flex h-14 shrink-0 items-center gap-2.5 border-b px-3", collapsed && "justify-center")}>
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"><Boxes className="size-4" /></div>
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">Zenith</p>
+            <p className="truncate text-[11px] leading-tight text-muted-foreground">JPhira Console</p>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-        {!collapsed ? <p className="px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">工作区</p> : <Separator className="my-2" />}
         <nav className="flex flex-col gap-0.5">
           {nav.map(({ label, icon: Icon }) => <NavButton key={label} label={label} Icon={Icon} active={active} collapsed={collapsed} onClick={() => handleNav(label)} />)}
           <NavButton label="API 文档" Icon={CircleHelp} active={active} collapsed={collapsed} onClick={() => handleNav("API 文档")} />
         </nav>
       </div>
 
-      <div className="border-t p-2">
+      <div className="flex flex-col gap-1 p-2">
+        {onToggle ? (
+          <Button variant="ghost" size="sm" className={cn(collapsed ? "justify-center px-0" : "justify-start gap-2.5 px-2.5", "text-muted-foreground hover:text-foreground")} onClick={onToggle} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>
+            {collapsed ? <PanelLeftOpen className="size-4 shrink-0" /> : <PanelLeftClose className="size-4 shrink-0" />}
+            {!collapsed && <span className="truncate">收起侧边栏</span>}
+          </Button>
+        ) : null}
+      </div>
+      <div className={cn("border-t p-2", collapsed && "flex justify-center")}>
         <UserMenu session={session} logout={logout} collapsed={collapsed} />
       </div>
     </div>
@@ -425,12 +423,9 @@ function OverviewSummary({ rooms, pools, setActive }: { rooms: Room[]; pools: Po
           <div className="flex flex-col gap-2">
             {pools.map((pool) => (
               <a href={`/pool/${pool.id}`} key={pool.id} className="flex items-center justify-between rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/50">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-7 items-center justify-center rounded-md bg-muted font-mono text-xs text-muted-foreground">{pool.id}</div>
-                  <div>
-                    <p className="text-sm font-medium">Pool {pool.id}</p>
-                    <p className="text-xs text-muted-foreground">{pool.chartIds.length} 张谱面{pool.favoriteId === null ? "" : ` · 收藏 ${pool.favoriteId}`}</p>
-                  </div>
+                <div>
+                  <p className="text-sm font-medium">Pool {pool.id}</p>
+                  <p className="text-xs text-muted-foreground">{pool.chartIds.length} 张谱面{pool.favoriteId === null ? "" : ` · 收藏 ${pool.favoriteId}`}</p>
                 </div>
                 {pool.default && <Badge>默认</Badge>}
               </a>
