@@ -297,7 +297,7 @@ export default function PoolClient({ id }: { id: string }) {
         )}
 
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl ease-in-out">
             <DialogHeader>
               <DialogTitle>添加谱面</DialogTitle>
               <DialogDescription>输入谱面 ID 先查谱确认，或直接搜索谱面后点击添加。</DialogDescription>
