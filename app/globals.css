@@ -16,8 +16,108 @@
   --color-ring: hsl(var(--ring));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
 }
 
-:root { --background: 210 40% 98%; --foreground: 222 47% 11%; --card: 0 0% 100%; --card-foreground: 222 47% 11%; --primary: 221 83% 53%; --primary-foreground: 210 40% 98%; --secondary: 214 32% 91%; --secondary-foreground: 222 47% 11%; --muted: 210 40% 96%; --muted-foreground: 215 16% 47%; --border: 214 32% 91%; --input: 214 32% 91%; --ring: 221 83% 53%; --destructive: 0 84.2% 60.2%; --destructive-foreground: 210 40% 98%; }
-* { border-color: hsl(var(--border)); }
-body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+:root {
+  --background: 232 40% 7%;
+  --foreground: 220 30% 96%;
+  --card: 232 34% 11%;
+  --card-foreground: 220 30% 96%;
+  --primary: 217 92% 62%;
+  --primary-foreground: 232 40% 97%;
+  --secondary: 232 28% 17%;
+  --secondary-foreground: 220 30% 96%;
+  --muted: 232 26% 16%;
+  --muted-foreground: 224 16% 66%;
+  --border: 232 26% 21%;
+  --input: 232 26% 21%;
+  --ring: 217 92% 62%;
+  --destructive: 0 74% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --accent: 190 90% 50%;
+  --accent-foreground: 232 40% 97%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  /* 纯净深色背景，仅在顶部留一点微光氛围 */
+  background-image:
+    radial-gradient(72rem 30rem at 50% -12%, hsl(217 92% 62% / 0.08), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* 细网格纹理（全屏均匀覆盖） */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, hsl(220 30% 96% / 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(220 30% 96% / 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* 玻璃拟态卡片（不透明深色实心） */
+.glass {
+  background: linear-gradient(180deg, hsl(232 34% 12%), hsl(232 30% 10%));
+}
+
+/* 顶部渐变发光线 */
+.glow-line {
+  background: linear-gradient(90deg, transparent, hsl(217 92% 62% / 0.9), hsl(180 90% 50% / 0.9), transparent);
+}
+
+/* 品牌文字渐变 */
+.text-gradient {
+  background: linear-gradient(100deg, hsl(217 92% 68%), hsl(180 90% 55%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 卡片悬浮发光 */
+.hover-glow {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.hover-glow:hover {
+  transform: translateY(-2px);
+  border-color: hsl(217 92% 62% / 0.45);
+  box-shadow: 0 12px 40px -12px hsl(217 92% 62% / 0.35);
+}
+
+/* 呼吸光点 */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 hsl(160 90% 48% / 0.5); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 5px hsl(160 90% 48% / 0); }
+}
+.pulse-dot {
+  animation: pulse-dot 2.2s ease-in-out infinite;
+}
+
+/* 淡入上浮 */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise {
+  animation: rise 0.4s ease-out both;
+}
+
+::selection {
+  background: hsl(217 92% 62% / 0.3);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: hsl(232 26% 26%); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(232 26% 34%); }
+::-webkit-scrollbar-track { background: transparent; }
