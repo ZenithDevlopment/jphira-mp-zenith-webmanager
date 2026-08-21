@@ -28,7 +28,7 @@ const nav = [
   { label: "谱池管理", icon: Database },
 ]
 type ConfirmTarget = { type: "room" | "pool"; id: string } | null
-type Session = { token: string; isAdmin: boolean; email: string }
+type Session = { token: string; isAdmin: boolean; email: string; userId?: number }
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([])
@@ -75,7 +75,7 @@ export default function Dashboard() {
 
   async function login(event: React.FormEvent) {
     event.preventDefault(); setLoggingIn(true)
-    try { const result = await api.login(email, password); const nextSession = { token: result.token, isAdmin: result.isAdmin, email }; window.localStorage.setItem("zenith-token", result.token); window.localStorage.setItem("zenith-session", JSON.stringify(nextSession)); setSession(nextSession); toast.success("登录成功", { description: result.isAdmin ? "管理员权限已启用" : "当前为只读权限" }); await load() }
+    try { const result = await api.login(email, password); const nextSession = { token: result.token, isAdmin: result.isAdmin, email, userId: result.userId }; window.localStorage.setItem("zenith-token", result.token); window.localStorage.setItem("zenith-session", JSON.stringify(nextSession)); setSession(nextSession); toast.success("登录成功", { description: result.isAdmin ? "管理员权限已启用" : "当前为只读权限" }); await load() }
     catch (reason) { toast.error("登录失败", { description: reason instanceof Error ? reason.message : "请检查账号和密码" }) }
     finally { setLoggingIn(false) }
   }

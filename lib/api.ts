@@ -44,7 +44,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  login: (email: string, password: string) => request<{ ok: boolean; token: string; isAdmin: boolean }>("/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) => request<{ ok: boolean; token: string; isAdmin: boolean; userId: number }>("/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   rooms: () => request<{ ok: boolean; rooms: Room[] }>("/room/list"),
   room: (id: string) => request<{ ok: boolean; info: Room }>(`/room/${encodeURIComponent(id)}/`),
   switchRoomPool: (id: string, poolId: number) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/pool/switch`, { method: "PUT", body: JSON.stringify({ poolId }) }),
