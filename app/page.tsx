@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { Activity, Boxes, ChevronDown, CircleHelp, Database, DoorOpen, LockKeyhole, LogIn, LogOut, Mail, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, Zap } from "lucide-react"
+import { Activity, Boxes, ChevronDown, CircleHelp, Database, DoorOpen, LockKeyhole, LogIn, LogOut, Mail, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, X, Zap } from "lucide-react"
 import { toast } from "sonner"
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { api, type Pool, type Room } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -35,6 +37,8 @@ export default function Dashboard() {
   const [poolId, setPoolId] = useState("")
   const [chartIds, setChartIds] = useState("")
   const [profileOpen, setProfileOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const pathname = usePathname()
 
   async function load() {
@@ -97,34 +101,27 @@ export default function Dashboard() {
   if (session === undefined) return <div className="flex min-h-screen items-center justify-center"><RefreshCw className="size-4 animate-spin text-primary" /></div>
   if (!session) return <LoginView email={email} password={password} setEmail={setEmail} setPassword={setPassword} login={login} loading={loggingIn} />
   const canWrite = session.isAdmin
-  return <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
-    {/* 侧边栏 */}
-    <aside className="glass sticky top-0 z-40 hidden h-screen flex-col border-r lg:flex">
-      <div className="flex h-16 items-center gap-3 border-b px-5">
-        <div className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30"><Boxes className="size-5" /></div>
-        <div><p className="text-sm font-bold tracking-tight text-gradient">Zenith Console</p><p className="text-[11px] text-muted-foreground">JPhira Multiplayer</p></div>
-      </div>
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        <div>
-          <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">工作区</p>
-          <nav className="flex flex-col gap-1">{nav.map(({ label, icon: Icon }) => <button key={label} onClick={() => setActive(label)} className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${active === label ? "bg-gradient-to-r from-blue-500/15 to-cyan-500/10 font-medium text-blue-300" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><Icon className={`size-4 ${active === label ? "text-blue-400" : "text-muted-foreground group-hover:text-foreground"}`} />{label}</button>)}</nav>
-        </div>
-        <button onClick={() => setActive("API 文档")} className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${active === "API 文档" ? "bg-gradient-to-r from-blue-500/15 to-cyan-500/10 font-medium text-blue-300" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><CircleHelp className={`size-4 ${active === "API 文档" ? "text-blue-400" : "text-muted-foreground group-hover:text-foreground"}`} /> API 文档</button>
-      </div>
-      <div className="relative border-t p-4">
-        <button type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen(!profileOpen)} className="flex w-full items-center gap-3 rounded-xl border bg-card/60 p-3 text-left transition-colors hover:border-blue-500/30">
-          <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20 text-blue-300"><ShieldCheck className="size-4" /></div>
-          <div className="min-w-0"><p className="truncate text-sm font-medium">{session.isAdmin ? "管理员" : "只读用户"}</p><p className="truncate text-[11px] text-muted-foreground">{session.email}</p></div>
-          <ChevronDown className={`ml-auto size-4 text-muted-foreground transition-transform ${profileOpen ? "rotate-180" : ""}`} />
-        </button>
-        <div className={`absolute bottom-full left-4 right-4 origin-bottom rounded-xl border bg-card p-1.5 shadow-2xl transition-all duration-200 ease-out ${profileOpen ? "translate-y-4 scale-100 opacity-100" : "pointer-events-none translate-y-6 scale-95 opacity-0"}`}><Button variant="ghost" className="w-full justify-start text-red-400 hover:text-red-300" onClick={logout}><LogOut className="size-4" />退出登录</Button></div>
-      </div>
+  return <div className={cn("min-h-screen lg:grid", sidebarCollapsed ? "lg:grid-cols-[76px_1fr]" : "lg:grid-cols-[260px_1fr]")}>
+    {/* 桌面侧边栏 */}
+    <aside className={cn("glass sticky top-0 z-40 hidden h-screen flex-col overflow-hidden border-r transition-[width] duration-300 lg:flex", sidebarCollapsed ? "lg:w-[76px]" : "lg:w-[260px]")}>
+      <Sidebar session={session} active={active} setActive={setActive} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} profileOpen={profileOpen} setProfileOpen={setProfileOpen} logout={logout} />
     </aside>
+
+    {/* 移动端悬浮左侧栏 */}
+    <div className={cn("fixed inset-0 z-50 lg:hidden", mobileSidebarOpen ? "" : "pointer-events-none")}>
+      <div role="presentation" onClick={() => setMobileSidebarOpen(false)} className={cn("absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300", mobileSidebarOpen ? "opacity-100" : "opacity-0")} />
+      <div className={cn("glass absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col border-r shadow-2xl transition-transform duration-300 ease-out", mobileSidebarOpen ? "translate-x-0" : "-translate-x-full")}>
+        <Sidebar session={session} active={active} setActive={setActive} collapsed={false} profileOpen={profileOpen} setProfileOpen={setProfileOpen} logout={logout} onNavigate={() => setMobileSidebarOpen(false)} onClose={() => setMobileSidebarOpen(false)} />
+      </div>
+    </div>
 
     <main className="relative min-w-0">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px glow-line" />
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/70 px-5 backdrop-blur-xl lg:px-8">
-        <p className="text-sm text-muted-foreground">控制台 <span className="mx-1 text-muted-foreground/50">/</span> <span className="font-medium text-foreground">{active}</span></p>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground lg:hidden" onClick={() => setMobileSidebarOpen(true)} aria-label="打开侧边栏"><Menu className="size-5" /></Button>
+          <p className="text-sm text-muted-foreground">控制台 <span className="mx-1 text-muted-foreground/50">/</span> <span className="font-medium text-foreground">{active}</span></p>
+        </div>
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300"><span className="pulse-dot mr-1.5 inline-block size-1.5 rounded-full bg-emerald-400" />{process.env.NEXT_PUBLIC_MOCK_API === "true" ? "Mock 环境" : "Production"}</Badge>
           {active !== "API 文档" && <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />刷新数据</Button>}
@@ -146,6 +143,38 @@ export default function Dashboard() {
     <AlertDialog open={confirmTarget !== null} onOpenChange={(open) => { if (!open) setConfirmTarget(null) }}><AlertDialogContent className="border-red-500/30"><AlertDialogHeader><AlertDialogTitle>确认删除{confirmTarget?.type === "room" ? "房间" : "谱池"}？</AlertDialogTitle><AlertDialogDescription>此操作无法撤销。删除后相关数据将从当前 Mock 服务中移除。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void confirmDelete()}>确认删除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={createTarget !== null} onOpenChange={(open) => { if (!open) setCreateTarget(null) }}><AlertDialogContent>{createTarget === "room" ? <><AlertDialogHeader><AlertDialogTitle>创建房间</AlertDialogTitle><AlertDialogDescription>{"创建房间并固化谱池列表，房间 ID 需匹配 ^[A-Za-z0-9_-]{1,20}$。"}</AlertDialogDescription></AlertDialogHeader><form onSubmit={createRoom} className="flex flex-col gap-4"><label className="flex flex-col gap-1 text-xs font-medium">房间 ID<Input autoFocus required pattern="[A-Za-z0-9_-]{1,20}" value={roomId} onChange={(event) => setRoomId(event.target.value)} placeholder="例如 tournament-01" /></label><label className="flex flex-col gap-1 text-xs font-medium">固化谱池 ID（逗号分隔）<Input required value={roomPools} onChange={(event) => setRoomPools(event.target.value)} placeholder="0,1" /></label><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="submit" className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"><Plus className="size-4" />创建房间</Button></AlertDialogFooter></form></> : <><AlertDialogHeader><AlertDialogTitle>新增谱池</AlertDialogTitle><AlertDialogDescription>新增全局谱池并设置包含的谱面 ID。</AlertDialogDescription></AlertDialogHeader><form onSubmit={createPool} className="flex flex-col gap-4"><label className="flex flex-col gap-1 text-xs font-medium">池 ID<Input autoFocus required type="number" value={poolId} onChange={(event) => setPoolId(event.target.value)} placeholder="3" /></label><label className="flex flex-col gap-1 text-xs font-medium">谱面 ID（逗号分隔）<Input required value={chartIds} onChange={(event) => setChartIds(event.target.value)} placeholder="4001,4002" /></label><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><Button type="submit" className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"><Plus className="size-4" />新增谱池</Button></AlertDialogFooter></form></>}</AlertDialogContent></AlertDialog>
   </div>
+}
+
+function Sidebar({ session, active, setActive, collapsed, onToggle, profileOpen, setProfileOpen, logout, onNavigate, onClose }: { session: Session; active: string; setActive: (value: string) => void; collapsed: boolean; onToggle?: () => void; profileOpen: boolean; setProfileOpen: (value: boolean) => void; logout: () => void; onNavigate?: () => void; onClose?: () => void }) {
+  const handleNav = (label: string) => { setActive(label); onNavigate?.() }
+  const navButton = (label: string, Icon: typeof Activity) => (
+    <button key={label} onClick={() => handleNav(label)} title={collapsed ? label : undefined} className={cn("group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors", active === label ? "bg-gradient-to-r from-blue-500/15 to-cyan-500/10 font-medium text-blue-300" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+      <Icon className={cn("size-4 shrink-0", active === label ? "text-blue-400" : "text-muted-foreground group-hover:text-foreground")} />
+      <span className={cn("overflow-hidden whitespace-nowrap text-sm transition-[max-width,opacity,transform] duration-300 ease-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>{label}</span>
+    </button>
+  )
+  return <>
+    <div className="flex h-16 items-center border-b px-4">
+      {!collapsed && <>
+        <div className="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30"><Boxes className="size-5" /></div>
+        <div className="ml-3 min-w-0"><p className="whitespace-nowrap text-sm font-bold tracking-tight text-gradient">Zenith Console</p><p className="whitespace-nowrap text-[11px] text-muted-foreground">JPhira Multiplayer</p></div>
+      </>}
+      <div className={cn("flex flex-1 items-center", collapsed ? "justify-center" : "justify-end")}>
+        {onToggle ? <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={onToggle} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>{collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}</Button> : onClose ? <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="关闭侧边栏"><X className="size-5" /></Button> : null}
+      </div>
+    </div>
+    <div className="flex flex-1 flex-col gap-6 p-4">
+      {!collapsed ? <p className="mb-2 whitespace-nowrap px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">工作区</p> : <div className="mb-2 h-px w-full bg-border/50" />}
+      <nav className="flex flex-col gap-1">{nav.map(({ label, icon: Icon }) => navButton(label, Icon))}{navButton("API 文档", CircleHelp)}</nav>
+    </div>
+    <div className="relative border-t p-4">
+      <button type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen(!profileOpen)} title={collapsed ? session.email : undefined} className="flex w-full items-center gap-3 rounded-xl border bg-card/60 p-3 text-left transition-colors hover:border-blue-500/30">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20 text-blue-300"><ShieldCheck className="size-4" /></div>
+        {!collapsed && <><div className="min-w-0"><p className="whitespace-nowrap text-sm font-medium">{session.isAdmin ? "管理员" : "只读用户"}</p><p className="whitespace-nowrap text-[11px] text-muted-foreground">{session.email}</p></div><ChevronDown className={`ml-auto size-4 text-muted-foreground transition-transform ${profileOpen ? "rotate-180" : ""}`} /></>}
+      </button>
+      {profileOpen && <div className={cn("absolute bottom-full origin-bottom rounded-xl border bg-card p-1.5 shadow-2xl transition-all duration-200 ease-out", collapsed ? "left-2 w-56" : "left-4 right-4")}><Button variant="ghost" className="w-full justify-start text-red-400 hover:text-red-300" onClick={logout}><LogOut className="size-4" />退出登录</Button></div>}
+    </div>
+  </>
 }
 
 function LoginView({ email, password, setEmail, setPassword, login, loading }: { email: string; password: string; setEmail: (value: string) => void; setPassword: (value: string) => void; login: (event: React.FormEvent) => void; loading: boolean }) {
@@ -174,7 +203,7 @@ function OverviewSummary({ rooms, pools, setActive }: { rooms: Room[]; pools: Po
 }
 
 function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, setCreateTarget }: { canWrite: boolean; rooms: Room[]; query: string; setQuery: (value: string) => void; action: (work: () => Promise<unknown>, success: string) => Promise<void>; setConfirmTarget: (target: ConfirmTarget) => void; setCreateTarget: (target: "room" | "pool" | null) => void }) {
-  return <section className="glass rise rounded-2xl border p-5">
+  return <TooltipProvider><section className="glass rise rounded-2xl border p-5">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-base font-semibold">房间管理</h2><p className="text-xs text-muted-foreground">{canWrite ? "创建、结束、删除房间并调整运行配置。" : "当前账号为只读权限，仅可查看房间状态。"}</p></div>
       <div className="flex items-center gap-3">
@@ -183,9 +212,9 @@ function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, 
         {canWrite && <Button onClick={() => setCreateTarget("room")} className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"><Plus className="size-4" />创建房间</Button>}
       </div>
     </div>
-    <Table><TableHeader><TableRow className="border-b border-border/60 hover:bg-transparent"><TableHead className="text-muted-foreground">房间</TableHead><TableHead className="text-muted-foreground">状态</TableHead><TableHead className="text-muted-foreground">玩家</TableHead><TableHead className="text-muted-foreground">当前谱池</TableHead>{canWrite && <TableHead className="text-right text-muted-foreground">操作</TableHead>}</TableRow></TableHeader><TableBody>{rooms.map((room) => <TableRow key={room.roomId} className="border-b border-border/40 transition-colors hover:bg-muted/40"><TableCell><a href={`/room/${encodeURIComponent(room.roomId)}`} className="font-medium text-blue-300 hover:text-blue-200 hover:underline">{room.roomId}</a><div className="text-xs text-muted-foreground">{room.type} · 上限 {room.config.maxPlayer}</div></TableCell><TableCell><Badge variant={room.state === "Playing" ? "default" : "secondary"} className={room.state === "Playing" ? "bg-emerald-500/15 text-emerald-300" : "bg-muted text-muted-foreground"}><span className="mr-1.5 inline-block size-1.5 rounded-full bg-current" />{room.state}</Badge></TableCell><TableCell><div className="flex items-center gap-2 text-muted-foreground"><Users className="size-4" />{room.players.length}<span className="text-muted-foreground/60">/ {room.config.maxPlayer}</span></div></TableCell><TableCell><a href={`/pool/${room.pool.currentPool.id}`} className="font-mono text-xs text-teal-300 hover:underline">pool-{room.pool.currentPool.id}</a></TableCell>{canWrite && <TableCell><div className="flex justify-end gap-1"><Button variant="outline" size="sm" className="border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10" onClick={() => void action(() => api.endRoom(room.roomId), "房间已结束")} disabled={room.state !== "Playing"}><Square className="size-3.5" />结束</Button><Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => setConfirmTarget({ type: "room", id: room.roomId })} title="删除房间"><Trash2 className="size-3.5" /></Button></div></TableCell>}</TableRow>)}</TableBody></Table>
+    <Table><TableHeader><TableRow className="border-b border-border/60 hover:bg-transparent"><TableHead className="text-muted-foreground">房间</TableHead><TableHead className="text-muted-foreground">状态</TableHead><TableHead className="text-muted-foreground">玩家</TableHead><TableHead className="text-muted-foreground">当前谱池</TableHead>{canWrite && <TableHead className="text-right text-muted-foreground">操作</TableHead>}</TableRow></TableHeader><TableBody>{rooms.map((room) => <TableRow key={room.roomId} className="border-b border-border/40 transition-colors hover:bg-muted/40"><TableCell><a href={`/room/${encodeURIComponent(room.roomId)}`} className="font-medium text-blue-300 hover:text-blue-200 hover:underline">{room.roomId}</a><div className="text-xs text-muted-foreground">{room.type} · 上限 {room.config.maxPlayer}</div></TableCell><TableCell><Badge variant={room.state === "Playing" ? "default" : "secondary"} className={room.state === "Playing" ? "bg-emerald-500/15 text-emerald-300" : "bg-muted text-muted-foreground"}><span className="mr-1.5 inline-block size-1.5 rounded-full bg-current" />{room.state}</Badge></TableCell><TableCell><div className="flex items-center gap-2 text-muted-foreground"><Users className="size-4" />{room.players.length}<span className="text-muted-foreground/60">/ {room.config.maxPlayer}</span></div></TableCell><TableCell><a href={`/pool/${room.pool.currentPool.id}`} className="font-mono text-xs text-teal-300 hover:underline">pool-{room.pool.currentPool.id}</a></TableCell>{canWrite && <TableCell><div className="flex justify-end gap-1"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => void action(() => api.endRoom(room.roomId), "房间已结束")} disabled={room.state !== "Playing"}><Square className="size-3.5" /></Button></TooltipTrigger><TooltipContent>结束对局</TooltipContent></Tooltip><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => setConfirmTarget({ type: "room", id: room.roomId })}><Trash2 className="size-3.5" /></Button></TooltipTrigger><TooltipContent>删除房间</TooltipContent></Tooltip></div></TableCell>}</TableRow>)}</TableBody></Table>
     {rooms.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">没有匹配的房间</p>}
-  </section>
+  </section></TooltipProvider>
 }
 
 function PoolCard({ canWrite, pools, action, setConfirmTarget, setCreateTarget }: { canWrite: boolean; pools: Pool[]; action: (work: () => Promise<unknown>, success: string) => Promise<void>; setConfirmTarget: (target: ConfirmTarget) => void; setCreateTarget: (target: "room" | "pool" | null) => void }) {

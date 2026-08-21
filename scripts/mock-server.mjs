@@ -26,6 +26,7 @@ function authorized(request, response, write = false) { const token = request.he
 async function body(request) { let value = ""; for await (const chunk of request) value += chunk; try { return JSON.parse(value || "{}") } catch { return {} } }
 
 async function api(request, response, path) {
+  path = path.length > 1 ? path.replace(/\/+$/, "") : path
   const data = request.method === "GET" || request.method === "DELETE" ? {} : await body(request)
   if (request.method === "POST" && path === "/login") { const token = `mock-${Date.now()}-${Math.random()}`; const isAdmin = String(data.email || "").toLowerCase().includes("admin"); tokens.set(token, { isAdmin }); return json(response, { ok: true, token, isAdmin }) }
   if (!authorized(request, response, request.method !== "GET")) return
