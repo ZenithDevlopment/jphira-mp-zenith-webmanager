@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { Activity, Boxes, ChevronsUpDown, CircleHelp, Database, DoorOpen, Loader2, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, Zap } from "lucide-react"
+import { Activity, Boxes, ChevronsUpDown, CircleHelp, Database, DoorOpen, Loader2, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, X, Zap } from "lucide-react"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
@@ -13,9 +13,8 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { api, phiraApi, type PhiraUser, type Pool, type Room } from "@/lib/api"
@@ -30,27 +29,6 @@ const nav = [
 ]
 type ConfirmTarget = { type: "room" | "pool"; id: string } | null
 type Session = { token: string; isAdmin: boolean; email: string; userId?: number }
-type PhiraUser = {
-  id: number
-  name: string
-  avatar: string
-  bio?: string
-  rks?: number
-  follower_count?: number
-  following_count?: number
-  badges?: string[]
-  badgeNames?: Record<string, string>
-}
-
-const PHIRA_API_BASE = "https://phira.5wyxi.com"
-
-async function fetchPhiraUser(userId: number): Promise<PhiraUser | null> {
-  try {
-    const response = await fetch(`${PHIRA_API_BASE}/user/${userId}`)
-    if (!response.ok) return null
-    return await response.json() as PhiraUser
-  } catch { return null }
-}
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([])
@@ -73,7 +51,6 @@ export default function Dashboard() {
   const [collectionLoading, setCollectionLoading] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [profile, setProfile] = useState<PhiraUser | null>(null)
   const pathname = usePathname()
 
   async function load() {
@@ -301,10 +278,9 @@ function UserMenu({ session, logout, collapsed = false, profile }: { session: Se
               </span>
               <span className="truncate text-xs text-muted-foreground">{session.email}</span>
             </span>
-            <span className="truncate text-xs text-muted-foreground">{session.email}</span>
-          </span>
-          <ChevronsUpDown className={cn("ml-auto size-4 shrink-0 transition-opacity duration-300", collapsed ? "opacity-0" : "opacity-100")} />
-        </Button>
+            <ChevronsUpDown className={cn("ml-auto size-4 shrink-0 transition-opacity duration-300", collapsed ? "opacity-0" : "opacity-100")} />
+          </Button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align={collapsed ? "start" : "end"} className="w-56">
         <DropdownMenuLabel>
@@ -347,6 +323,11 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, log
           <Button variant="ghost" size="sm" className="justify-start gap-2.5 px-2.5 text-muted-foreground hover:text-foreground" onClick={onToggle} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>
             {collapsed ? <PanelLeftOpen className="size-4 shrink-0" /> : <PanelLeftClose className="size-4 shrink-0" />}
             <span className={cn("overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>收起侧边栏</span>
+          </Button>
+        ) : onClose ? (
+          <Button variant="ghost" size="sm" className="justify-start gap-2.5 px-2.5 text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="关闭侧边栏">
+            <X className="size-4 shrink-0" />
+            {!collapsed && <span className="truncate">关闭菜单</span>}
           </Button>
         ) : null}
       </div>
