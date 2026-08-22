@@ -82,7 +82,8 @@ export type PhiraUser = {
 const API_BASE = "/api/v1"
 const PHIRA_API_BASE = "https://phira.5wyxi.com"
 
-// 测试账号 token（临时）：生产环境由后端下发 phira_token 存入 localStorage
+// 仅 Mock 环境用测试账号换取 token；生产环境由后端下发 phira_token 存入 localStorage
+const IS_MOCK_API = process.env.NEXT_PUBLIC_MOCK_API === "true"
 const PHIRA_TEST_EMAIL = "i@07210700.xyz"
 const PHIRA_TEST_PASSWORD = "asd123456"
 
@@ -96,7 +97,8 @@ async function phira<T>(path: string, init?: RequestInit): Promise<T | null> {
 async function phiraToken(): Promise<string | null> {
   const stored = typeof window !== "undefined" ? window.localStorage.getItem("phira-token") : null
   if (stored) return stored
-  // 本地没有真实 token 时，临时用测试账号换取（仅开发用）
+  // 仅 Mock 环境：本地没有真实 token 时，临时用测试账号换取
+  if (!IS_MOCK_API) return null
   const login = await fetch(`${PHIRA_API_BASE}/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: PHIRA_TEST_EMAIL, password: PHIRA_TEST_PASSWORD }) })
   if (!login.ok) return null
   const data = await login.json() as { token?: string }
