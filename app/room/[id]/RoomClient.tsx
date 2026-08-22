@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AnimatedTabs } from "@/components/ui/animated-tabs"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -94,9 +95,19 @@ export default function RoomClient({ id }: { id: string }) {
                     <div className="flex flex-col gap-4">
                       <div className="flex flex-col gap-1.5 text-sm font-medium">
                         <Label htmlFor="switch-pool">切换 pending pool</Label>
-                        <select id="switch-pool" className="h-9 rounded-md border bg-background px-3 text-sm" value={room.pool.pendingPoolId ?? room.pool.currentPool.id} onChange={(event) => void action(() => api.switchRoomPool(room.roomId, Number(event.target.value)))} disabled={busy}>
-                          {room.pool.pools.map((pool) => <option key={pool.id} value={pool.id}>Pool {pool.id}</option>)}
-                        </select>
+                        {room.pool.pools.length < 5 ? (
+                          <AnimatedTabs
+                            value={String(room.pool.pendingPoolId ?? room.pool.currentPool.id)}
+                            onValueChange={(value) => void action(() => api.switchRoomPool(room.roomId, Number(value)))}
+                            options={room.pool.pools.map((pool) => ({ value: String(pool.id), label: `Pool ${pool.id}` }))}
+                            disabled={busy}
+                            className="w-full"
+                          />
+                        ) : (
+                          <select id="switch-pool" className="h-9 rounded-md border bg-background px-3 text-sm" value={room.pool.pendingPoolId ?? room.pool.currentPool.id} onChange={(event) => void action(() => api.switchRoomPool(room.roomId, Number(event.target.value)))} disabled={busy}>
+                            {room.pool.pools.map((pool) => <option key={pool.id} value={pool.id}>Pool {pool.id}</option>)}
+                          </select>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1.5 text-sm font-medium">
                         <Label htmlFor="favorite-id">当前池收藏夹 ID</Label>
