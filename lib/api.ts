@@ -1,4 +1,4 @@
-export type RoomPlayer = { id: number; name?: string }
+export type RoomPlayer = { id: number; name?: string; avatar?: string | null }
 export type RoomPool = {
   currentPool: Pool
   pools: Pool[]
@@ -73,10 +73,14 @@ export type PhiraUser = {
   bio: string | null
   rks: number
   language: string
-  roles: string[]
+  roles: number
   badges: string[]
+  badgeNames?: Record<string, string>
   follower_count: number
   following_count: number
+  joined?: string
+  last_login?: string
+  banned?: boolean
 }
 
 const API_BASE = "/api/v1"

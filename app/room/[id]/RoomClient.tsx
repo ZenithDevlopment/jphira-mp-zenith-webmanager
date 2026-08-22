@@ -1,14 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, HelpCircle, Layers, RefreshCw, Save, Settings, Square, Users } from "lucide-react"
+import { ArrowLeft, ExternalLink, HelpCircle, Layers, RefreshCw, Save, Settings, Square, Users } from "lucide-react"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { api, type Room } from "@/lib/api"
+import { api, type Room, phiraApi, type PhiraUser } from "@/lib/api"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AnimatedTabs } from "@/components/ui/animated-tabs"
@@ -27,6 +29,9 @@ export default function RoomClient({ id }: { id: string }) {
   const [configOpen, setConfigOpen] = useState(false)
   const [poolOpen, setPoolOpen] = useState(false)
   const [form, setForm] = useState<RoomForm>({ minPlayer: "", maxPlayer: "", selectCountdown: "", readyCountdown: "", forceFinish: "", interval: "", chatEnable: true })
+  const [profiles, setProfiles] = useState<Record<number, PhiraUser | null>>({})
+  const [selected, setSelected] = useState<PhiraUser | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
 
   async function load() {
     try {
@@ -36,6 +41,21 @@ export default function RoomClient({ id }: { id: string }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载房间") }
   }
   useEffect(() => { void load(); try { setIsAdmin(Boolean((JSON.parse(window.localStorage.getItem("zenith-session") || "null") as { isAdmin?: boolean } | null)?.isAdmin)) } catch { setIsAdmin(false) } }, [roomId])
+
+  // 动态拉取在线玩家的头像/昵称等资料（phira.5wyxi.com/user/{id}）
+  useEffect(() => {
+    if (!room) return
+    const ids = room.players.map((player) => player.id).filter((pid) => !profiles[pid])
+    if (!ids.length) return
+    let cancelled = false
+    for (const pid of ids) {
+      phiraApi.user(pid).then((user) => {
+        if (!cancelled && user) setProfiles((prev) => ({ ...prev, [pid]: user }))
+      })
+    }
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room])
 
   async function action(work: () => Promise<unknown>): Promise<boolean> { setBusy(true); setError(""); try { await work(); await load(); return true } catch (reason) { setError(reason instanceof Error ? reason.message : "操作失败"); return false } finally { setBusy(false) } }
   function number(name: keyof Omit<RoomForm, "chatEnable">) { return Number(form[name]) }
@@ -163,13 +183,80 @@ export default function RoomClient({ id }: { id: string }) {
           <CardContent>
             {room.players.length ? (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {room.players.map((player) => <div key={player.id} className="rounded-md border px-3 py-2 text-sm">{player.name || `玩家 ${player.id}`}</div>)}
+                {room.players.map((player) => {
+                  const profile = profiles[player.id]
+                  const loading = !profile && !profiles[player.id]
+                  return (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => { if (profile) { setSelected(profile); setProfileOpen(true) } }}
+                      className="flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent"
+                    >
+                      <Avatar className="size-7 shrink-0">
+                        {profile?.avatar && <AvatarImage src={profile.avatar} alt={profile.name} />}
+                        <AvatarFallback className="size-7 text-[11px]">{profile?.name?.slice(0, 1) ?? <RefreshCw className="size-3.5 animate-spin text-muted-foreground" />}</AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1 truncate text-left">{profile?.name ?? (loading ? "加载中..." : `玩家 ${player.id}`)}</span>
+                      {profile && <ExternalLink className="size-3.5 shrink-0 text-muted-foreground/60" />}
+                    </button>
+                  )
+                })}
               </div>
             ) : <p className="text-sm text-muted-foreground">暂无玩家</p>}
           </CardContent>
         </Card>
+
+        <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+          <DialogContent className="sm:max-w-md">
+            {selected && (
+              <>
+                <DialogHeader>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="size-16">
+                      {selected.avatar && <AvatarImage src={selected.avatar} alt={selected.name} />}
+                      <AvatarFallback className="size-16 text-xl">{selected.name?.slice(0, 1)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <DialogTitle>{selected.name}</DialogTitle>
+                      <DialogDescription>Phira 用户 #{selected.id}</DialogDescription>
+                    </div>
+                  </div>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <DetailRow label="RKS" value={Number(selected.rks.toFixed(2))} />
+                  <DetailRow label="粉丝" value={selected.follower_count} />
+                  <DetailRow label="关注" value={selected.following_count} />
+                  <DetailRow label="语言" value={selected.language} />
+                </div>
+                {selected.bio && (
+                  <div className="rounded-md bg-muted p-3 text-sm">
+                    <p className="mb-1 text-xs text-muted-foreground">简介</p>
+                    <p className="whitespace-pre-wrap">{selected.bio}</p>
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`https://phira.moe/user/${selected.id}`} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="size-4" />打开官方主页
+                    </Link>
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </main>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
   )
 }
 

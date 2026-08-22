@@ -10,14 +10,16 @@ const output = join(root, "out")
 const port = Number(process.env.PORT || 8080)
 const nextPort = Number(process.env.DEV_NEXT_PORT || 0)
 const tokens = new Map()
+// 从 https://phira.5wyxi.com/staff 提取的成员 id（硬编码部分，用于 lobby-main 房间的在线玩家）
+const staff = [712, 2, 69, 62495, 134153, 2368, 471275, 1727, 383, 349, 2164, 29050, 32162, 1178, 7134, 2596, 1725410, 5942, 407, 1785150, 1558, 81, 420417, 19781, 54664, 407551, 702870, 638889, 288403, 3339, 18164, 407560, 51815, 10351, 731, 47650, 12663, 9863, 1047456, 30532, 13369, 508559]
 const pools = [
   { id: 0, chartIds: [74673, 74615, 74166, 74086, 74665], favoriteId: 1024, default: true },
   { id: 1, chartIds: [2048, 2050, 2077], favoriteId: null, default: false },
   { id: 2, chartIds: [3001, 3018, 3090, 3112], favoriteId: 3018, default: false },
 ]
-const rooms = [room("lobby-main", true, 42, 1000, 0, [0, 1, 2], "Playing"), room("night-owl", false, 8, 32, 1, [1, 2], "WaitForReady"), room("zenith-test", true, 16, 64, 2, [2], "SelectChart")]
+const rooms = [room("lobby-main", true, 42, 1000, 0, [0, 1, 2], "Playing", staff), room("night-owl", false, 8, 32, 1, [1, 2], "WaitForReady"), room("zenith-test", true, 16, 64, 2, [2], "SelectChart")]
 
-function room(id, live, players, maxPlayer, currentPoolId, poolIds, state = "WaitForReady") { return { roomId: id, state, live, locked: false, cycle: true, host: null, players: Array.from({ length: players }, (_, index) => ({ id: index + 1 })), monitors: [], chart: null, type: "local", config: { minPlayer: 1, maxPlayer, selectCountdown: 30, readyCountdown: 10, forceFinish: 60, interval: 1 }, pool: { currentPool: pool(currentPoolId), pools: poolIds.map(pool).filter(Boolean), pendingPoolId: null, favoriteId: null, finishedRoundsSinceRefresh: 0, refreshIntervalRounds: 1 } } }
+function room(id, live, players, maxPlayer, currentPoolId, poolIds, state = "WaitForReady", playerIds = null) { return { roomId: id, state, live, locked: false, cycle: true, host: null, players: playerIds ? playerIds.map((pid) => ({ id: pid })) : Array.from({ length: players }, (_, index) => ({ id: index + 1 })), monitors: [], chart: null, type: "local", config: { minPlayer: 1, maxPlayer, selectCountdown: 30, readyCountdown: 10, forceFinish: 60, interval: 1 }, pool: { currentPool: pool(currentPoolId), pools: poolIds.map(pool).filter(Boolean), pendingPoolId: null, favoriteId: null, finishedRoundsSinceRefresh: 0, refreshIntervalRounds: 1 } } }
 function pool(id) { return pools.find((item) => item.id === id) }
 function findRoom(id) { return rooms.find((item) => item.roomId === id) }
 function json(response, body, status = 200) { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(body)) }
