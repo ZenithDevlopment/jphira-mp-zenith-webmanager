@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 
 type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean }
 
@@ -57,7 +58,7 @@ export default function RoomClient({ id }: { id: string }) {
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>修改房间配置</AlertDialogTitle>
-                      <AlertDialogDescription>按照 API 要求提交完整的必填配置。</AlertDialogDescription>
+                      <AlertDialogDescription>调整房间运行参数，保存后将立即生效。</AlertDialogDescription>
                     </AlertDialogHeader>
                     <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: room.locked, chatEnable: form.chatEnable, selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval") })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
                       <Field label="最低玩家数" value={form.minPlayer} onChange={(value) => setForm({ ...form, minPlayer: value })} min="1" />
@@ -66,10 +67,13 @@ export default function RoomClient({ id }: { id: string }) {
                       <Field label="准备倒计时（秒）" value={form.readyCountdown} onChange={(value) => setForm({ ...form, readyCountdown: value })} min="1" />
                       <Field label="强制结束倒计时（秒）" value={form.forceFinish} onChange={(value) => setForm({ ...form, forceFinish: value })} min="1" />
                       <Field label="谱池刷新间隔（轮）" value={form.interval} onChange={(value) => setForm({ ...form, interval: value })} min="1" />
-                      <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                        <input type="checkbox" checked={form.chatEnable} onChange={(event) => setForm({ ...form, chatEnable: event.target.checked })} />
-                        启用聊天
-                      </label>
+                      <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
+                        <Switch id="chat-enable" checked={form.chatEnable} onCheckedChange={(checked) => setForm({ ...form, chatEnable: checked })} />
+                        <label htmlFor="chat-enable" className="flex flex-col text-sm">
+                          <span className="font-medium">启用聊天</span>
+                          <span className="text-xs font-normal text-muted-foreground">允许玩家在房间内发送消息</span>
+                        </label>
+                      </div>
                       <AlertDialogFooter className="sm:col-span-2">
                         <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
                         <Button type="submit" disabled={busy}><Save className="size-4" />保存配置</Button>
