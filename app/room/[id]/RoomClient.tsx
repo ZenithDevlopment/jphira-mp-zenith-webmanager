@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, Layers, RefreshCw, Save, Settings, Square, Users } from "lucide-react"
+import { ArrowLeft, HelpCircle, Layers, RefreshCw, Save, Settings, Square, Users } from "lucide-react"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean }
 
@@ -60,25 +61,27 @@ export default function RoomClient({ id }: { id: string }) {
                       <AlertDialogTitle>修改房间配置</AlertDialogTitle>
                       <AlertDialogDescription>调整房间运行参数，保存后将立即生效。</AlertDialogDescription>
                     </AlertDialogHeader>
-                    <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: room.locked, chatEnable: form.chatEnable, selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval") })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
-                      <Field label="最低玩家数" value={form.minPlayer} onChange={(value) => setForm({ ...form, minPlayer: value })} min="1" />
-                      <Field label="最大玩家数" value={form.maxPlayer} onChange={(value) => setForm({ ...form, maxPlayer: value })} min="1" />
-                      <Field label="选谱倒计时（秒）" value={form.selectCountdown} onChange={(value) => setForm({ ...form, selectCountdown: value })} min="10" />
-                      <Field label="准备倒计时（秒）" value={form.readyCountdown} onChange={(value) => setForm({ ...form, readyCountdown: value })} min="1" />
-                      <Field label="强制结束倒计时（秒）" value={form.forceFinish} onChange={(value) => setForm({ ...form, forceFinish: value })} min="1" />
-                      <Field label="谱池刷新间隔（轮）" value={form.interval} onChange={(value) => setForm({ ...form, interval: value })} min="1" />
-                      <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
-                        <Switch id="chat-enable" checked={form.chatEnable} onCheckedChange={(checked) => setForm({ ...form, chatEnable: checked })} />
-                        <label htmlFor="chat-enable" className="flex flex-col text-sm">
-                          <span className="font-medium">启用聊天</span>
-                          <span className="text-xs font-normal text-muted-foreground">允许玩家在房间内发送消息</span>
-                        </label>
-                      </div>
-                      <AlertDialogFooter className="sm:col-span-2">
-                        <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
-                        <Button type="submit" disabled={busy}><Save className="size-4" />保存配置</Button>
-                      </AlertDialogFooter>
-                    </form>
+                    <TooltipProvider delayDuration={200}>
+                      <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: room.locked, chatEnable: form.chatEnable, selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval") })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
+                        <Field label="最低玩家数" value={form.minPlayer} onChange={(value) => setForm({ ...form, minPlayer: value })} min="1" tip="房间自动开始所需最少玩家数" />
+                        <Field label="最大玩家数" value={form.maxPlayer} onChange={(value) => setForm({ ...form, maxPlayer: value })} min="1" tip="房间能容纳的玩家数" />
+                        <Field label="选谱倒计时（秒）" value={form.selectCountdown} onChange={(value) => setForm({ ...form, selectCountdown: value })} min="10" tip="玩家进行投票所需要的时间" />
+                        <Field label="准备倒计时（秒）" value={form.readyCountdown} onChange={(value) => setForm({ ...form, readyCountdown: value })} min="1" tip="给玩家准备（下载谱面）的时间" />
+                        <Field label="强制结束倒计时（秒）" value={form.forceFinish} onChange={(value) => setForm({ ...form, forceFinish: value })} min="1" tip="强制切换房间状态的时间，从 Playing 到 SelectChart" />
+                        <Field label="谱池刷新间隔（轮）" value={form.interval} onChange={(value) => setForm({ ...form, interval: value })} min="1" tip="经过填写的轮数之后，将进行谱池的轮换" />
+                        <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
+                          <Switch id="chat-enable" checked={form.chatEnable} onCheckedChange={(checked) => setForm({ ...form, chatEnable: checked })} />
+                          <label htmlFor="chat-enable" className="flex flex-col text-sm">
+                            <span className="font-medium">启用聊天</span>
+                            <span className="text-xs font-normal text-muted-foreground">允许玩家在房间内发送消息</span>
+                          </label>
+                        </div>
+                        <AlertDialogFooter className="sm:col-span-2">
+                          <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+                          <Button type="submit" disabled={busy}><Save className="size-4" />保存配置</Button>
+                        </AlertDialogFooter>
+                      </form>
+                    </TooltipProvider>
                   </AlertDialogContent>
                 </AlertDialog>
                 <AlertDialog open={poolOpen} onOpenChange={setPoolOpen}>
@@ -175,6 +178,23 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Row({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between border-b pb-2"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}</span></div>
 }
-function Field({ label, value, onChange, min }: { label: string; value: string; onChange: (value: string) => void; min: string }) {
-  return <label className="flex flex-col gap-1.5 text-sm font-medium">{label}<Input required type="number" min={min} value={value} onChange={(event) => onChange(event.target.value)} /></label>
+function Field({ label, value, onChange, min, tip }: { label: string; value: string; onChange: (value: string) => void; min: string; tip?: string }) {
+  return (
+    <label className="flex flex-col gap-1.5 text-sm font-medium">
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {tip && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="inline-flex items-center text-muted-foreground/70 transition-colors hover:text-foreground">
+                <HelpCircle className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{tip}</TooltipContent>
+          </Tooltip>
+        )}
+      </span>
+      <Input required type="number" min={min} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  )
 }
