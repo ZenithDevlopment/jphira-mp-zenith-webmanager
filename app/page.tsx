@@ -137,7 +137,7 @@ export default function Dashboard() {
   return (
     <div className={cn("min-h-screen lg:grid lg:transition-[grid-template-columns] lg:duration-300 lg:ease-in-out", sidebarCollapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[240px_1fr]")}>
       {/* 桌面侧边栏 */}
-      <aside className={cn("sticky top-0 z-40 hidden h-screen flex-col border-r bg-card lg:flex", sidebarCollapsed ? "lg:w-[64px]" : "lg:w-[240px]")}>
+      <aside className={cn("sticky top-0 z-40 hidden h-dvh flex-col border-r bg-card lg:flex", sidebarCollapsed ? "lg:w-[64px]" : "lg:w-[240px]")}>
         <Sidebar session={session} active={active} setActive={setActive} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} logout={logout} profile={profile} />
       </aside>
 
@@ -302,7 +302,7 @@ function UserMenu({ session, logout, collapsed = false, profile }: { session: Se
 function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, logout, onNavigate, profile }: { session: Session; active: string; setActive: (value: string) => void; collapsed: boolean; onToggle?: () => void; onClose?: () => void; logout: () => void; onNavigate?: () => void; profile?: PhiraUser | null }) {
   const handleNav = (label: string) => { setActive(label); onNavigate?.() }
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"><Boxes className="size-4" /></div>
         <div className={cn("min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>
@@ -331,7 +331,7 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, log
           </Button>
         ) : null}
       </div>
-      <div className={cn("border-t p-2", collapsed && "flex justify-center")}>
+      <div className={cn("border-t p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]", collapsed && "flex justify-center")}>
         <UserMenu session={session} logout={logout} collapsed={collapsed} profile={profile} />
       </div>
     </div>
