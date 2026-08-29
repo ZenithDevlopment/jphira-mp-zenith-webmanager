@@ -124,6 +124,14 @@ export const phiraApi = {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? window.localStorage.getItem("zenith-token") : null
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } })
+  if (response.status === 401) {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("zenith-token")
+      window.localStorage.removeItem("zenith-session")
+      if (window.location.pathname !== "/") window.location.assign("/")
+    }
+    throw new Error("未登录")
+  }
   if (!response.ok) {
     let message = `API ${response.status}`
     try { const error = await response.json() as { message?: string }; if (error.message) message = error.message } catch { /* keep status fallback */ }
