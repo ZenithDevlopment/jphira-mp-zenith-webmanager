@@ -43,6 +43,16 @@ export type PlayerRound = {
 }
 export type RankEntry = { playerId: number; name: string; points: number; rank: number }
 
+/** 可导入导出的数据类型，对应服务端 data/ 下的文件 */
+export const DATA_KINDS = [
+  { value: "pools", label: "谱池", hint: "池定义、类别、配额、轮换顺序" },
+  { value: "records", label: "比赛记录", hint: "每轮成绩、积分与排名" },
+  { value: "points", label: "玩家积分", hint: "累计积分（积分榜数据来源）" },
+  { value: "submissions", label: "投稿", hint: "玩家投稿与审核状态" },
+  { value: "admins", label: "管理员", hint: "后台管理员白名单" },
+] as const
+export type DataKind = (typeof DATA_KINDS)[number]["value"]
+
 export type Room = {
   roomId: string
   state: "Playing" | "WaitForReady" | "SelectChart"
@@ -270,6 +280,20 @@ export const api = {
   playerRecords: (playerId: number, limit = 50) => request<{ ok: boolean; result: { playerId: number; rounds: PlayerRound[] } }>(`/record/player/${playerId}?limit=${limit}`),
   /** 累计积分排行榜 */
   pointRanking: (limit = 50) => request<{ ok: boolean; ranking: RankEntry[] }>(`/point/ranking?limit=${limit}`),
+  /** 数据导出：admins | pools | points | records | submissions */
+  exportData: (kind: DataKind) => request<unknown>(`/data/${kind}/export`),
+  /** 数据导入。merge=true 时按主键合并，否则整体覆盖。 */
+  importData: (kind: DataKind, content: string, merge: boolean) =>
+    request<{ ok: boolean; imported: number; total: number; backup: string }>(`/data/${kind}/import?mode=${merge ? "merge" : "replace"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: content,
+    }),
+  listBackups: (kind: DataKind) => request<{ ok: boolean; backups: string[] }>(`/data/${kind}/backups`),
+  restoreBackup: (kind: DataKind, backup: string) =>
+    request<{ ok: boolean; imported: number }>(`/data/${kind}/restore`, {
+      method: "POST", body: JSON.stringify({ backup }),
+    }),
   deleteRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}`, { method: "DELETE" }),
   deletePool: (id: number) => request<{ ok: boolean }>(`/pool/${id}`, { method: "DELETE" }),
   createRoom: (id: string, pools: number[]) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/create`, { method: "POST", body: JSON.stringify({ type: "local", pools }) }),

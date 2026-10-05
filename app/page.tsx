@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import RoomClient from "@/app/room/[id]/RoomClient"
 import PoolClient from "@/app/pool/[id]/PoolClient"
 import { AdminPanel } from "@/components/admin-panel"
+import { DataTransferPanel } from "@/components/data-transfer-panel"
 import { BatchCreatePools } from "@/components/batch-create-pools"
 import { ModeToggle } from "@/components/mode-toggle"
 import { PoolGenerator } from "@/components/pool-generator"
@@ -33,6 +34,7 @@ import { SubmissionPanel } from "@/components/submission-panel"
 const nav = [
   { label: "总览", icon: Activity, adminOnly: false },
   { label: "比赛记录", icon: Trophy, adminOnly: true },
+  { label: "数据导入导出", icon: Database, adminOnly: true },
   { label: "谱面投稿", icon: Send, adminOnly: false },
   { label: "房间管理", icon: DoorOpen, adminOnly: false },
   { label: "谱池管理", icon: Database, adminOnly: true },
@@ -232,6 +234,7 @@ export default function Dashboard() {
         <div className="mx-auto max-w-[1440px] p-5 lg:p-8">
           {active === "总览" && <Overview rooms={rooms} pools={pools} liveRooms={liveRooms} totalPlayers={totalPlayers} setActive={setActive} />}
           {active === "比赛记录" && <RecordPanel />}
+          {active === "数据导入导出" && <DataTransferPanel canWrite={canWrite} />}
           {showRooms && <RoomCard canWrite={canWrite} rooms={filteredRooms} query={query} setQuery={setQuery} action={action} setConfirmTarget={setConfirmTarget} setCreateTarget={setCreateTarget} />}
           {showPools && (
             <PoolCard
