@@ -615,7 +615,7 @@ function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, 
               </TableHeader>
               <TableBody>
                 {rooms.map((room) => (
-                  <TableRow key={room.roomId}>
+                  <TableRow key={room.roomId} className="cursor-pointer" onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a")) window.location.href = `/room/${encodeURIComponent(room.roomId)}` }}>
                     <TableCell>
                       <a href={`/room/${encodeURIComponent(room.roomId)}`} className="font-medium hover:underline">{room.roomId}</a>
                       <div className="text-xs text-muted-foreground">{room.type} · 上限 {room.config.maxPlayer}</div>
@@ -632,6 +632,7 @@ function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, 
                     {canWrite && (
                       <TableCell>
                         <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="sm" asChild><a href={`/room/${encodeURIComponent(room.roomId)}`}><ExternalLink className="size-4" />管理</a></Button>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span>
