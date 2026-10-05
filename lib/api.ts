@@ -6,7 +6,43 @@ export type RoomPool = {
   favoriteId?: number | null
   finishedRoundsSinceRefresh: number
   refreshIntervalRounds: number
+  /** Rounds the current pool actually stays for: its own quota, else the room interval. */
+  effectiveRoundsPerStay?: number
 }
+/** 一轮结算中单个玩家的成绩 */
+export type RoundPlayerResult = {
+  playerId: number
+  playerName: string
+  rank: number
+  score: number
+  accuracy: number
+  std: number
+  /** 本轮获得的积分 */
+  gainedPoints: number
+  /** 结算后的累计积分 */
+  totalPoints: number
+}
+/** 一轮比赛（正常游玩结束后落库，不可修改） */
+export type RoundRecord = {
+  id: string
+  roomId: string
+  chartId: number
+  chartName: string
+  startedAt: number
+  finishedAt: number
+  results: RoundPlayerResult[]
+}
+/** 玩家视角下的一轮记录 */
+export type PlayerRound = {
+  recordId: string
+  roomId: string
+  chartId: number
+  chartName: string
+  finishedAt: number
+  result: RoundPlayerResult
+}
+export type RankEntry = { playerId: number; name: string; points: number; rank: number }
+
 export type Room = {
   roomId: string
   state: "Playing" | "WaitForReady" | "SelectChart"
@@ -28,7 +64,68 @@ export type Room = {
   }
   pool: RoomPool
 }
-export type Pool = { id: number; chartIds: number[]; favoriteId: number | null; default: boolean }
+/** REGULAR 常规, CONFIGURED 纯配置, TB 长曲, MANUAL 手动维护. */
+export type PoolCategory = "REGULAR" | "CONFIGURED" | "TB" | "MANUAL"
+
+export const POOL_CATEGORIES: { value: PoolCategory; label: string; hint: string }[] = [
+  { value: "MANUAL", label: "手动", hint: "没有筛谱规则，人工维护" },
+  { value: "REGULAR", label: "常规", hint: "regular，评分 > 4.2 且难度 ≥ AT17" },
+  { value: "CONFIGURED", label: "纯配置", hint: "plain，评分 > 4.0" },
+  { value: "TB", label: "TB", hint: "常规或纯配置，评分 > 4.2 且时长 > 6 分钟" },
+]
+
+export type Pool = {
+  id: number
+  chartIds: number[]
+  favoriteId: number | null
+  default: boolean
+  category?: PoolCategory | null
+  /** 目标容量，批量生成时按此切分 */
+  sizeLimit?: number | null
+  /** 停留轮数，留空则跟随房间的 interval */
+  roundsPerStay?: number | null
+  order?: number | null
+  /** 是否允许玩家向该池投稿 */
+  submissionOpen?: boolean
+}
+
+export type SubmissionStatus = "PENDING" | "APPROVED" | "REJECTED"
+
+export type SubmissionSubmitter = {
+  userId: number
+  name: string
+  at: string | null
+}
+
+/** 按「池 + 谱面」聚合：同一张谱面被多人投稿时合并到同一条里 */
+export type Submission = {
+  poolId: number
+  chartId: number
+  status: SubmissionStatus
+  chart: PhiraChart | null
+  submitterCount: number
+  submitters: SubmissionSubmitter[]
+  createdAt: string | null
+  reviewedAt: string | null
+  reviewerId: number | null
+  reason: string | null
+}
+
+export const SUBMISSION_STATUS_LABEL: Record<SubmissionStatus, string> = {
+  PENDING: "待审",
+  APPROVED: "已通过",
+  REJECTED: "已拒绝",
+}
+
+export type ChartSearchResult = {
+  indexed: number
+  remoteTotal: number | null
+  refreshing: boolean
+  matched: number
+  /** TB 专用：为 true 表示条件放宽后仍有候选，只是时长还没探测 */
+  pendingDuration?: boolean
+  charts: PhiraChart[]
+}
 
 export type PhiraChart = {
   id: number
@@ -52,6 +149,8 @@ export type PhiraChart = {
   created: string
   updated: string
   chartUpdated: string
+  /** 秒，未探测过时为 null */
+  durationSeconds?: number | null
 }
 export type PhiraCollection = {
   id: number
@@ -134,7 +233,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     let message = `API ${response.status}`
-    try { const error = await response.json() as { message?: string }; if (error.message) message = error.message } catch { /* keep status fallback */ }
+    try {
+      // 服务端错误体是 { ok:false, reason:"..." }，message 只作兜底
+      const error = await response.json() as { reason?: string; message?: string }
+      if (error.reason) message = error.reason
+      else if (error.message) message = error.message
+    } catch { /* keep status fallback */ }
     throw new Error(message)
   }
   return response.json()
@@ -148,14 +252,94 @@ export const api = {
   setRoomFavorite: (id: string, favoriteId: number | null) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/pool/favorite`, { method: "PUT", body: JSON.stringify({ favoriteId }) }),
   pools: () => request<{ ok: boolean; pools: Pool[] }>("/pool/list"),
   endRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}/end`, { method: "POST" }),
+  /** 以系统消息形式推送到单个房间（客户端按 senderId=-1 渲染） */
+  sayToRoom: (id: string, message: string) => request<{ ok: boolean; delivered: number }>(`/room/${encodeURIComponent(id)}/say`, { method: "POST", body: JSON.stringify({ message }) }),
+  /** 全服广播 */
+  broadcast: (message: string) => request<{ ok: boolean; delivered: number }>("/broadcast", { method: "POST", body: JSON.stringify({ message }) }),
+  /** 比赛记录：按轮次倒序，可按房间或玩家过滤 */
+  records: (params?: { limit?: number; offset?: number; roomId?: string; playerId?: number }) => {
+    const search = new URLSearchParams()
+    if (params?.limit) search.set("limit", String(params.limit))
+    if (params?.offset) search.set("offset", String(params.offset))
+    if (params?.roomId) search.set("roomId", params.roomId)
+    if (params?.playerId) search.set("playerId", String(params.playerId))
+    const query = search.toString()
+    return request<{ ok: boolean; result: { total: number; records: RoundRecord[] } }>(`/record/list${query ? `?${query}` : ""}`)
+  },
+  /** 某位玩家的历史轮次 */
+  playerRecords: (playerId: number, limit = 50) => request<{ ok: boolean; result: { playerId: number; rounds: PlayerRound[] } }>(`/record/player/${playerId}?limit=${limit}`),
+  /** 累计积分排行榜 */
+  pointRanking: (limit = 50) => request<{ ok: boolean; ranking: RankEntry[] }>(`/point/ranking?limit=${limit}`),
   deleteRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}`, { method: "DELETE" }),
   deletePool: (id: number) => request<{ ok: boolean }>(`/pool/${id}`, { method: "DELETE" }),
   createRoom: (id: string, pools: number[]) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/create`, { method: "POST", body: JSON.stringify({ type: "local", pools }) }),
   updateRoom: (id: string, data: { live: boolean; lock: boolean; minPlayer: number; maxPlayer: number; chatEnable: boolean; selectCountdown?: number; readyCountdown?: number; forceFinish?: number; interval?: number }) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
-  createPool: (id: number, chartIds: number[], favoriteId?: number | null) => request<{ ok: boolean }>("/pool", { method: "POST", body: JSON.stringify({ id, chartIds, favoriteId: favoriteId ?? null }) }),
+  createPool: (id: number, chartIds: number[], favoriteId?: number | null,
+               meta?: { category?: PoolCategory; sizeLimit?: number | null; roundsPerStay?: number | null }) =>
+    request<{ ok: boolean }>("/pool", {
+      method: "POST",
+      body: JSON.stringify({ id, chartIds, favoriteId: favoriteId ?? null, ...meta }),
+    }),
+  /** 批量创建空池，ID 由服务端分配，避免并发冲突 */
+  createPoolsBatch: (body: { count: number; category?: PoolCategory; sizeLimit?: number; roundsPerStay?: number }) =>
+    request<{ ok: boolean; poolIds: number[] }>("/pool/batch", { method: "POST", body: JSON.stringify(body) }),
   addChart: (id: number, chartId: number) => request<{ ok: boolean }>(`/pool/${id}/chart`, { method: "POST", body: JSON.stringify({ chartId }) }),
   addCharts: (id: number, chartIds: number[]) => request<{ ok: boolean }>(`/pool/${id}/charts`, { method: "POST", body: JSON.stringify({ chartIds }) }),
   removeChart: (id: number, chartId: number) => request<{ ok: boolean }>(`/pool/${id}/chart/${chartId}`, { method: "DELETE" }),
   setPoolDefault: (id: number, enabled: boolean) => request<{ ok: boolean }>(`/pool/${id}/default`, { method: "PUT", body: JSON.stringify({ enabled }) }),
   setPoolFavorite: (id: number, favoriteId: number | null) => request<{ ok: boolean }>(`/pool/${id}/favorite`, { method: "PUT", body: JSON.stringify({ favoriteId }) }),
+
+  // 负数表示清空该字段（恢复为跟随房间默认），省略表示不修改
+  updatePool: (id: number, data: { category?: PoolCategory; sizeLimit?: number; roundsPerStay?: number; order?: number; submissionOpen?: boolean }) =>
+    request<{ ok: boolean }>(`/pool/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  /** 按规则筛选谱面。refresh 会让服务端在后台增量拉取目录。 */
+  searchCharts: (params: {
+    category?: PoolCategory
+    tag?: string
+    minRating?: number
+    minRatingCount?: number
+    minDifficulty?: number
+    minDuration?: number
+    limit?: number
+    refresh?: boolean
+    division?: "plain"
+    /** TB 专用：先按预算探测时长再筛选，否则未探测的谱面永远不匹配 6 分钟门槛 */
+    probeDuration?: number
+  } = {}) => {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== "") query.set(key, String(value))
+    }
+    const suffix = query.toString()
+    return request<{ ok: boolean; result: ChartSearchResult }>(`/chart/search${suffix ? `?${suffix}` : ""}`)
+  },
+
+  /** 把匹配到的谱面按 sizeLimit 切成多个池。probeDuration 仅 TB 需要。 */
+  generatePools: (body: { category: PoolCategory; sizeLimit?: number; roundsPerStay?: number; probeDuration?: number }) =>
+    request<{ ok: boolean; poolIds: number[] }>("/pool/generate", { method: "POST", body: JSON.stringify(body) }),
+
+  probeDurations: (chartIds: number[]) =>
+    request<{ ok: boolean; probed: number; charts: PhiraChart[] }>("/chart/duration", { method: "POST", body: JSON.stringify({ chartIds }) }),
+
+  // ── 投稿：玩家侧只需登录，审核侧需管理员 ──
+  openPools: () => request<{ ok: boolean; pools: Pool[] }>("/submission/open-pools"),
+  submitCharts: (poolId: number, chartIds: number[]) =>
+    request<{ ok: boolean; accepted: number; results: { chartId: number; accepted: boolean; reason: string | null }[] }>(
+      `/pool/${poolId}/submissions`, { method: "POST", body: JSON.stringify({ chartIds }) }),
+  withdrawSubmission: (poolId: number, chartId: number) =>
+    request<{ ok: boolean }>(`/pool/${poolId}/submissions/${chartId}`, { method: "DELETE" }),
+  mySubmissions: () => request<{ ok: boolean; submissions: Submission[] }>("/submission/mine"),
+  pendingSubmissions: () => request<{ ok: boolean; submissions: Submission[] }>("/submission/pending"),
+  poolSubmissions: (poolId: number, status?: SubmissionStatus) =>
+    request<{ ok: boolean; submissions: Submission[] }>(
+      `/pool/${poolId}/submissions${status ? `?status=${status}` : ""}`),
+  approveSubmission: (poolId: number, chartId: number) =>
+    request<{ ok: boolean }>(`/submission/${poolId}/${chartId}/approve`, { method: "POST" }),
+  rejectSubmission: (poolId: number, chartId: number, reason?: string) =>
+    request<{ ok: boolean }>(`/submission/${poolId}/${chartId}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+
+  admins: () => request<{ ok: boolean; admins: number[] }>("/admin"),
+  addAdmin: (userId: number) => request<{ ok: boolean; added: boolean; admins: number[] }>("/admin", { method: "POST", body: JSON.stringify({ userId }) }),
+  removeAdmin: (userId: number) => request<{ ok: boolean; removed: boolean; admins: number[] }>(`/admin/${userId}`, { method: "DELETE" }),
 }

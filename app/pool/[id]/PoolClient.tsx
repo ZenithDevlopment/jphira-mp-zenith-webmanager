@@ -2,20 +2,24 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft, Check, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Search, Star, Trash2, TriangleAlert, X } from "lucide-react"
+import { ArrowLeft, Check, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Save, Search, Star, Trash2, TriangleAlert, X } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { api, phiraApi, type PhiraChart, type PhiraCollection, type Pool } from "@/lib/api"
+import { api, phiraApi, POOL_CATEGORIES, type PhiraChart, type PhiraCollection, type Pool, type PoolCategory } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { toast } from "sonner"
 
 type ChartDetail = { data: PhiraChart; error?: boolean }
 type CollectionDetail = { loaded: boolean; notFound: boolean; data: PhiraCollection | null }
@@ -52,10 +56,30 @@ export default function PoolClient({ id }: { id: string }) {
   const [batchCollectionId, setBatchCollectionId] = useState("")
   const [batchPreview, setBatchPreview] = useState<{ loading: boolean; data: PhiraCollection | null; notFound: boolean }>({ loading: false, data: null, notFound: false })
   const [addTab, setAddTab] = useState("id")
+  const [category, setCategory] = useState<PoolCategory>("MANUAL")
+  const [sizeLimit, setSizeLimit] = useState("")
+  const [roundsPerStay, setRoundsPerStay] = useState("")
+  const [order, setOrder] = useState("")
+  const [submissionOpen, setSubmissionOpen] = useState(false)
 
   async function load() {
-    try { const result = await api.pools(); const found = result.pools.find((item) => item.id === Number(poolId)); if (!found) throw new Error("谱池不存在"); setPool(found); setFavoriteId(found.favoriteId === null ? "" : String(found.favoriteId)) } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载谱池") }
+    try { const result = await api.pools(); const found = result.pools.find((item) => item.id === Number(poolId)); if (!found) throw new Error("谱池不存在"); setPool(found); setFavoriteId(found.favoriteId === null ? "" : String(found.favoriteId)); setCategory(found.category ?? "MANUAL"); setSizeLimit(found.sizeLimit == null ? "" : String(found.sizeLimit)); setRoundsPerStay(found.roundsPerStay == null ? "" : String(found.roundsPerStay)); setOrder(found.order == null ? "" : String(found.order)); setSubmissionOpen(Boolean(found.submissionOpen)) } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载谱池") }
   }
+  /** Saved on toggle: a switch that needs a separate save click reads as broken. */
+  async function toggleSubmission(checked: boolean) {
+    setSubmissionOpen(checked)
+    setBusy(true)
+    try {
+      await api.updatePool(Number(poolId), { submissionOpen: checked })
+      toast.success(checked ? "已开启投稿" : "已关闭投稿")
+    } catch (reason) {
+      setSubmissionOpen(!checked)
+      toast.error("投稿状态更新失败", { description: reason instanceof Error ? reason.message : undefined })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function loadCharts(ids: number[]) {
     setCharts((prev) => {
       const next = { ...prev }
@@ -287,6 +311,69 @@ export default function PoolClient({ id }: { id: string }) {
                 <Button variant="outline" onClick={() => void action(() => api.setPoolFavorite(pool.id, favoriteId ? Number(favoriteId) : null))} disabled={busy}><Star className="size-4" />保存收藏</Button>
               </div>
               <p className="text-xs text-muted-foreground">留空并保存可清除 favoriteId。</p>
+
+              <Separator />
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="pool-category">类别</Label>
+                <select
+                  id="pool-category"
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as PoolCategory)}
+                  disabled={busy}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {POOL_CATEGORIES.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label} — {item.hint}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">类别只影响轮换与展示，不会自动改变池内谱面。</p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="pool-size">每池谱面数</Label>
+                  <Input id="pool-size" inputMode="numeric" placeholder="留空=不限" value={sizeLimit} onChange={(event) => setSizeLimit(event.target.value)} disabled={busy} />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="pool-rounds">停留轮数</Label>
+                  <Input id="pool-rounds" inputMode="numeric" placeholder="留空=跟随房间" value={roundsPerStay} onChange={(event) => setRoundsPerStay(event.target.value)} disabled={busy} />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="pool-order">轮换顺序</Label>
+                  <Input id="pool-order" inputMode="numeric" placeholder="留空=按 ID" value={order} onChange={(event) => setOrder(event.target.value)} disabled={busy} />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5">
+                  <Label htmlFor="pool-submission">开启玩家投稿</Label>
+                  <span className="text-xs text-muted-foreground">
+                    开启后，玩家可以在「谱面投稿」页勾选谱面投进这个池，你审核通过即自动入池。
+                  </span>
+                </div>
+                <Switch id="pool-submission" checked={submissionOpen} onCheckedChange={(checked) => void toggleSubmission(checked)} disabled={busy} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={() => void action(() => api.updatePool(pool.id, {
+                    category,
+                    sizeLimit: sizeLimit.trim() === "" ? -1 : Number(sizeLimit),
+                    roundsPerStay: roundsPerStay.trim() === "" ? -1 : Number(roundsPerStay),
+                    order: order.trim() === "" ? 0 : Number(order),
+                    submissionOpen,
+                  }))}
+                  disabled={busy}
+                >
+                  <Save className="size-4" />保存池配置
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  留空会恢复默认（谱面数不限、轮数跟随房间 interval、顺序按 ID）。当前池 {pool.chartIds.length} 张。
+                </span>
+              </div>
             </CardContent>
           </Card>
         )}

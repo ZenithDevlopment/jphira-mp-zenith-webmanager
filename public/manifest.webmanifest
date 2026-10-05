@@ -1,0 +1,13 @@
+{
+  "name": "Zenith 控制台",
+  "short_name": "Zenith",
+  "description": "JPhira 多人房间与谱池管理后台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f11",
+  "theme_color": "#0f0f11",
+  "icons": [
+    { "src": "/logo.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" },
+    { "src": "/logo.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "maskable" }
+  ]
+}

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { Activity, Boxes, ChevronsUpDown, CircleHelp, Database, DoorOpen, Loader2, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, ShieldCheck, Square, Trash2, Users, X, Zap } from "lucide-react"
+import { Activity, ChevronsUpDown, CircleHelp, Database, DoorOpen, ExternalLink, Loader2, LogOut, Menu, Megaphone, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Send, ShieldCheck, Square, Trash2, Trophy, UserCog, Users, X, Zap } from "lucide-react"
+import Image from "next/image"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
@@ -17,15 +18,25 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { api, phiraApi, type PhiraUser, type Pool, type Room } from "@/lib/api"
+import { api, phiraApi, POOL_CATEGORIES, type PhiraUser, type Pool, type PoolCategory, type Room } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import RoomClient from "@/app/room/[id]/RoomClient"
 import PoolClient from "@/app/pool/[id]/PoolClient"
+import { AdminPanel } from "@/components/admin-panel"
+import { BatchCreatePools } from "@/components/batch-create-pools"
+import { ModeToggle } from "@/components/mode-toggle"
+import { PoolGenerator } from "@/components/pool-generator"
+import { RecordPanel } from "@/components/record-panel"
+import { SayDialog } from "@/components/say-dialog"
+import { SubmissionPanel } from "@/components/submission-panel"
 
 const nav = [
-  { label: "总览", icon: Activity },
-  { label: "房间管理", icon: DoorOpen },
-  { label: "谱池管理", icon: Database },
+  { label: "总览", icon: Activity, adminOnly: false },
+  { label: "比赛记录", icon: Trophy, adminOnly: true },
+  { label: "谱面投稿", icon: Send, adminOnly: false },
+  { label: "房间管理", icon: DoorOpen, adminOnly: false },
+  { label: "谱池管理", icon: Database, adminOnly: true },
+  { label: "管理员", icon: UserCog, adminOnly: true },
 ]
 type ConfirmTarget = { type: "room" | "pool"; id: string } | null
 type Session = { token: string; isAdmin: boolean; email: string; userId?: number }
@@ -49,6 +60,11 @@ export default function Dashboard() {
   const [chartIds, setChartIds] = useState("")
   const [poolFavoriteId, setPoolFavoriteId] = useState("")
   const [collectionLoading, setCollectionLoading] = useState(false)
+  const [newPoolCategory, setNewPoolCategory] = useState<PoolCategory>("MANUAL")
+  const [newPoolSize, setNewPoolSize] = useState("")
+  const [newPoolRounds, setNewPoolRounds] = useState("")
+  const [selectedPools, setSelectedPools] = useState<number[]>([])
+  const [batchBusy, setBatchBusy] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const pathname = usePathname()
@@ -56,7 +72,12 @@ export default function Dashboard() {
   async function load() {
     setLoading(true)
     try {
-      const [roomData, poolData] = await Promise.all([api.rooms(), api.pools()])
+      // 池列表是管理员接口，普通玩家调它只会拿到 403，跳过即可
+      const isAdmin = session?.isAdmin ?? false
+      const [roomData, poolData] = await Promise.all([
+        api.rooms(),
+        isAdmin ? api.pools() : Promise.resolve({ ok: true, pools: [] as Pool[] }),
+      ])
       setRooms(roomData.rooms)
       setPools(poolData.pools)
     } catch (reason) {
@@ -120,7 +141,44 @@ export default function Dashboard() {
       }
     }
     if (favoriteId === null && ids.length === 0) { toast.error("请填写谱面 ID 或收藏夹 ID"); return }
-    void action(() => api.createPool(id, ids, favoriteId), "谱池已创建").then(() => { setPoolId(""); setChartIds(""); setPoolFavoriteId(""); setCreateTarget(null) })
+    const meta = {
+      category: newPoolCategory,
+      sizeLimit: newPoolSize.trim() === "" ? null : Number(newPoolSize),
+      roundsPerStay: newPoolRounds.trim() === "" ? null : Number(newPoolRounds),
+    }
+    void action(() => api.createPool(id, ids, favoriteId, meta), "谱池已创建").then(() => {
+      setPoolId(""); setChartIds(""); setPoolFavoriteId("")
+      setNewPoolCategory("MANUAL"); setNewPoolSize(""); setNewPoolRounds("")
+      setCreateTarget(null)
+    })
+  }
+
+  const togglePool = (id: number) => {
+    setSelectedPools((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id])
+  }
+
+  /** Batch actions reuse the single-pool endpoints and report partial failures. */
+  async function runBatch(work: (id: number) => Promise<unknown>, label: string) {
+    if (!selectedPools.length) return
+    setBatchBusy(true)
+    let done = 0
+    const failed: string[] = []
+    for (const id of selectedPools) {
+      try {
+        await work(id)
+        done++
+      } catch (error) {
+        failed.push(`#${id}: ${error instanceof Error ? error.message : "失败"}`)
+      }
+    }
+    setBatchBusy(false)
+    setSelectedPools([])
+    await load()
+    if (failed.length) {
+      toast.warning(`${label}：成功 ${done} 个，失败 ${failed.length} 个（${failed.slice(0, 2).join("；")}${failed.length > 2 ? "…" : ""}）`)
+    } else {
+      toast.success(`${label}：成功 ${done} 个`)
+    }
   }
 
   const filteredRooms = rooms.filter((room) => room.roomId.toLowerCase().includes(query.toLowerCase()))
@@ -167,13 +225,31 @@ export default function Dashboard() {
               {isMockApi ? "Mock 环境" : "Production"}
             </Badge>
             {active !== "API 文档" && <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw className={cn("size-3.5", loading && "animate-spin")} />刷新</Button>}
+            <ModeToggle />
           </div>
         </header>
 
         <div className="mx-auto max-w-[1440px] p-5 lg:p-8">
           {active === "总览" && <Overview rooms={rooms} pools={pools} liveRooms={liveRooms} totalPlayers={totalPlayers} setActive={setActive} />}
+          {active === "比赛记录" && <RecordPanel />}
           {showRooms && <RoomCard canWrite={canWrite} rooms={filteredRooms} query={query} setQuery={setQuery} action={action} setConfirmTarget={setConfirmTarget} setCreateTarget={setCreateTarget} />}
-          {showPools && <PoolCard canWrite={canWrite} pools={pools} action={action} setConfirmTarget={setConfirmTarget} setCreateTarget={setCreateTarget} />}
+          {showPools && (
+            <PoolCard
+              canWrite={canWrite}
+              pools={pools}
+              action={action}
+              setConfirmTarget={setConfirmTarget}
+              setCreateTarget={setCreateTarget}
+              selected={selectedPools}
+              onToggle={togglePool}
+              onToggleAll={setSelectedPools}
+              batchBusy={batchBusy}
+              runBatch={runBatch}
+              onRefresh={() => void load()}
+            />
+          )}
+          {active === "谱面投稿" && <SubmissionPanel canWrite={canWrite} />}
+          {active === "管理员" && canWrite && <AdminPanel />}
           {active === "API 文档" && <ApiDocs />}
         </div>
       </main>
@@ -235,6 +311,30 @@ export default function Dashboard() {
                   <Label htmlFor="create-pool-favorite">收藏夹 ID（可选）</Label>
                   <Input id="create-pool-favorite" type="number" value={poolFavoriteId} onChange={(event) => setPoolFavoriteId(event.target.value)} placeholder="例如 74879" />
                   <p className="text-xs text-muted-foreground">填写后会自动用该收藏夹的全部谱面创建谱池，谱面输入框可留空。</p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="create-pool-category">类别</Label>
+                  <select
+                    id="create-pool-category"
+                    value={newPoolCategory}
+                    onChange={(event) => setNewPoolCategory(event.target.value as PoolCategory)}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {POOL_CATEGORIES.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label} — {item.hint}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">类别只是标记与轮换参数，不会自动筛选谱面。要按规则筛谱请用「按规则生成谱池」。</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="create-pool-size">每池谱面数</Label>
+                    <Input id="create-pool-size" inputMode="numeric" value={newPoolSize} onChange={(event) => setNewPoolSize(event.target.value)} placeholder="留空=不限" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="create-pool-rounds">停留轮数</Label>
+                    <Input id="create-pool-rounds" inputMode="numeric" value={newPoolRounds} onChange={(event) => setNewPoolRounds(event.target.value)} placeholder="留空=跟随房间" />
+                  </div>
                 </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel>取消</AlertDialogCancel>
@@ -304,7 +404,7 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, log
   return (
     <div className="flex h-dvh flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"><Boxes className="size-4" /></div>
+        <Image src="/logo.jpg" alt="ZENITH" width={32} height={32} unoptimized className="size-8 shrink-0 rounded-md object-cover" />
         <div className={cn("min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 -translate-x-2" : "max-w-[10rem] opacity-100 translate-x-0")}>
           <p className="truncate text-sm font-semibold">Zenith</p>
           <p className="truncate text-[11px] leading-tight text-muted-foreground">JPhira Console</p>
@@ -313,7 +413,8 @@ function Sidebar({ session, active, setActive, collapsed, onToggle, onClose, log
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
         <nav className="flex flex-col gap-0.5">
-          {nav.map(({ label, icon: Icon }) => <NavButton key={label} label={label} Icon={Icon} active={active} collapsed={collapsed} onClick={() => handleNav(label)} />)}
+          {nav.filter((item) => !item.adminOnly || session.isAdmin).map(({ label, icon: Icon }) =>
+            <NavButton key={label} label={label} Icon={Icon} active={active} collapsed={collapsed} onClick={() => handleNav(label)} />)}
           <NavButton label="API 文档" Icon={CircleHelp} active={active} collapsed={collapsed} onClick={() => handleNav("API 文档")} />
         </nav>
       </div>
@@ -353,7 +454,7 @@ function LoginView({ email, password, setEmail, setPassword, login, loading }: {
     <main className="flex min-h-screen items-center justify-center p-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-4 flex size-11 items-center justify-center rounded-md bg-primary text-primary-foreground"><Boxes className="size-5" /></div>
+          <Image src="/logo.jpg" alt="ZENITH" width={64} height={64} unoptimized className="mb-4 size-16 rounded-lg object-cover" />
           <h1 className="text-2xl font-semibold tracking-tight">Zenith 控制台</h1>
           <p className="mt-1 text-sm text-muted-foreground">JPhira 多人房间与谱池管理后台</p>
         </div>
@@ -493,6 +594,7 @@ function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, 
         <PageHeader title="房间管理" description={canWrite ? "创建、结束、删除房间并调整运行配置。" : "当前账号为只读权限，仅可查看房间状态。"}>
           <div className="flex items-center gap-2">
             <Input placeholder="搜索房间 ID..." value={query} onChange={(event) => setQuery(event.target.value)} className="w-56" />
+            {canWrite && <SayDialog />}
             <Button onClick={() => setCreateTarget("room")} disabled={!canWrite}><Plus className="size-4" />创建房间</Button>
           </div>
         </PageHeader>
@@ -529,6 +631,16 @@ function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, 
                         <div className="flex justify-end gap-1">
                           <Tooltip>
                             <TooltipTrigger asChild>
+                              <span>
+                                <SayDialog roomId={room.roomId} trigger={
+                                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground"><Megaphone className="size-4" /></Button>
+                                } />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>发送消息</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
                               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => void action(() => api.endRoom(room.roomId), "房间已结束")} disabled={room.state !== "Playing"}><Square className="size-4" /></Button>
                             </TooltipTrigger>
                             <TooltipContent>结束对局</TooltipContent>
@@ -556,18 +668,68 @@ function RoomCard({ canWrite, rooms, query, setQuery, action, setConfirmTarget, 
   )
 }
 
-function PoolCard({ canWrite, pools, action, setConfirmTarget, setCreateTarget }: { canWrite: boolean; pools: Pool[]; action: (work: () => Promise<unknown>, success: string) => Promise<void>; setConfirmTarget: (target: ConfirmTarget) => void; setCreateTarget: (target: "room" | "pool" | null) => void }) {
+function PoolCard({ canWrite, pools, action, setConfirmTarget, setCreateTarget, selected, onToggle, onToggleAll, batchBusy, runBatch, onRefresh }: { canWrite: boolean; pools: Pool[]; action: (work: () => Promise<unknown>, success: string) => Promise<void>; setConfirmTarget: (target: ConfirmTarget) => void; setCreateTarget: (target: "room" | "pool" | null) => void; selected: number[]; onToggle: (id: number) => void; onToggleAll: (ids: number[]) => void; batchBusy: boolean; runBatch: (work: (id: number) => Promise<unknown>, label: string) => Promise<void>; onRefresh: () => void }) {
+  const allSelected = pools.length > 0 && selected.length === pools.length
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="谱池管理" description={canWrite ? "维护全局谱池、谱面和默认池标志。" : "当前账号为只读权限，仅可查看谱池配置。"}>
+        {canWrite && <PoolGenerator onGenerated={onRefresh} />}
+        {canWrite && <BatchCreatePools onCreated={onRefresh} />}
         <Button onClick={() => setCreateTarget("pool")} disabled={!canWrite}><Plus className="size-4" />新增谱池</Button>
       </PageHeader>
+
+      {canWrite && selected.length > 0 && (
+        <Card className="border-primary/40">
+          <CardContent className="flex flex-wrap items-center gap-2 p-3">
+            <span className="text-sm font-medium">已选 {selected.length} 个池</span>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <Button variant="outline" size="sm" disabled={batchBusy} onClick={() => void onToggleAll([])}>取消选择</Button>
+            <Button variant="outline" size="sm" disabled={batchBusy}
+                    onClick={() => void runBatch((id) => api.setPoolDefault(id, true), "批量设为默认")}>
+              设为默认
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={batchBusy}>改类别</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {POOL_CATEGORIES.map((item) => (
+                  <DropdownMenuItem key={item.value}
+                                    onClick={() => void runBatch((id) => api.updatePool(id, { category: item.value }), `批量改为${item.label}`)}>
+                    {item.label} — {item.hint}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" size="sm" disabled={batchBusy}
+                    onClick={() => void runBatch((id) => api.updatePool(id, { roundsPerStay: -1 }), "批量清除停留轮数")}>
+              清除轮数
+            </Button>
+            <Button variant="destructive" size="sm" className="ml-auto" disabled={batchBusy}
+                    onClick={() => void runBatch((id) => api.deletePool(id), "批量删除")}>
+              <Trash2 className="size-4" />删除所选中
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                {canWrite && (
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="全选谱池"
+                      className="size-4 cursor-pointer accent-primary"
+                      checked={allSelected}
+                      onChange={() => onToggleAll(allSelected ? [] : pools.map((item) => item.id))}
+                    />
+                  </TableHead>
+                )}
                 <TableHead>池 ID</TableHead>
+                <TableHead>类别</TableHead>
                 <TableHead>谱面</TableHead>
                 <TableHead>状态</TableHead>
                 {canWrite && <TableHead className="text-right">操作</TableHead>}
@@ -575,9 +737,32 @@ function PoolCard({ canWrite, pools, action, setConfirmTarget, setCreateTarget }
             </TableHeader>
             <TableBody>
               {pools.map((pool) => (
-                <TableRow key={pool.id}>
+                <TableRow key={pool.id} data-state={selected.includes(pool.id) ? "selected" : undefined} className={cn(selected.includes(pool.id) ? "bg-muted/50" : undefined, "cursor-pointer")} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a")) window.location.href = `/pool/${pool.id}` }}>
+                  {canWrite && (
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        aria-label={`选择谱池 ${pool.id}`}
+                        className="size-4 cursor-pointer accent-primary"
+                        checked={selected.includes(pool.id)}
+                        onChange={() => onToggle(pool.id)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <a href={`/pool/${pool.id}`} className="font-mono text-sm font-medium hover:underline">Pool {pool.id}</a>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm">{POOL_CATEGORIES.find((item) => item.value === (pool.category ?? "MANUAL"))?.label ?? "手动"}</span>
+                      {(pool.sizeLimit != null || pool.roundsPerStay != null) && (
+                        <span className="text-[11px] text-muted-foreground">
+                          {pool.sizeLimit != null ? `${pool.sizeLimit} 首` : ""}
+                          {pool.sizeLimit != null && pool.roundsPerStay != null ? " · " : ""}
+                          {pool.roundsPerStay != null ? `${pool.roundsPerStay} 轮` : ""}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex max-w-md flex-wrap gap-1">
@@ -596,6 +781,7 @@ function PoolCard({ canWrite, pools, action, setConfirmTarget, setCreateTarget }
                   {canWrite && (
                     <TableCell>
                       <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" asChild><a href={`/pool/${pool.id}`}><ExternalLink className="size-4" />管理</a></Button>
                         <Button variant="ghost" size="sm" onClick={() => void action(() => api.setPoolDefault(pool.id, !pool.default), pool.default ? "已取消默认谱池" : "已设为默认谱池")}>{pool.default ? "取消默认" : "设为默认"}</Button>
                         <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setConfirmTarget({ type: "pool", id: String(pool.id) })} disabled={pool.default}><Trash2 className="size-4" /></Button>
                       </div>
