@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 
-type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean }
+type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean; adminIds: string }
 
 export default function RoomClient({ id }: { id: string }) {
   const pathname = usePathname()
@@ -29,7 +29,7 @@ export default function RoomClient({ id }: { id: string }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [poolOpen, setPoolOpen] = useState(false)
-  const [form, setForm] = useState<RoomForm>({ minPlayer: "", maxPlayer: "", selectCountdown: "", readyCountdown: "", forceFinish: "", interval: "", chatEnable: true })
+  const [form, setForm] = useState<RoomForm>({ minPlayer: "", maxPlayer: "", selectCountdown: "", readyCountdown: "", forceFinish: "", interval: "", chatEnable: true, adminIds: "" })
   const [profiles, setProfiles] = useState<Record<number, PhiraUser | null>>({})
   const [selected, setSelected] = useState<PhiraUser | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -38,7 +38,7 @@ export default function RoomClient({ id }: { id: string }) {
     try {
       const result = await api.room(roomId)
       setRoom(result.info)
-      setForm({ minPlayer: String(result.info.config.minPlayer), maxPlayer: String(result.info.config.maxPlayer), selectCountdown: String(result.info.config.selectCountdown), readyCountdown: String(result.info.config.readyCountdown), forceFinish: String(result.info.config.forceFinish), interval: String(result.info.config.interval), chatEnable: true })
+      setForm({ minPlayer: String(result.info.config.minPlayer), maxPlayer: String(result.info.config.maxPlayer), selectCountdown: String(result.info.config.selectCountdown), readyCountdown: String(result.info.config.readyCountdown), forceFinish: String(result.info.config.forceFinish), interval: String(result.info.config.interval), chatEnable: true, adminIds: (result.info.config.adminIds ?? []).join(", ") })
     } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载房间") }
   }
   useEffect(() => { void load(); try { setIsAdmin(Boolean((JSON.parse(window.localStorage.getItem("zenith-session") || "null") as { isAdmin?: boolean } | null)?.isAdmin)) } catch { setIsAdmin(false) } }, [roomId])
@@ -76,7 +76,11 @@ export default function RoomClient({ id }: { id: string }) {
       setBusy(false)
     }
   }
-  function number(name: keyof Omit<RoomForm, "chatEnable">) { return Number(form[name]) }
+  function number(name: keyof Omit<RoomForm, "chatEnable" | "adminIds">) { return Number(form[name]) }
+  /** Accepts "1, 2 3" and ignores empties; the server rejects non positive ids. */
+  function parseAdminIds(raw: string) {
+    return raw.split(/[^0-9]+/).filter(Boolean).map(Number)
+  }
   if (error && !room) return <DetailState message={error} />
   if (!room) return <DetailState message="正在加载房间..." loading />
 
@@ -101,13 +105,20 @@ export default function RoomClient({ id }: { id: string }) {
                       <AlertDialogDescription>调整房间运行参数，保存后将立即生效。</AlertDialogDescription>
                     </AlertDialogHeader>
                     <TooltipProvider delayDuration={200}>
-                      <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: room.locked, chatEnable: form.chatEnable, selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval") })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
+                      <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: room.locked, chatEnable: form.chatEnable, selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval"), adminIds: parseAdminIds(form.adminIds) })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
                         <Field label="最低玩家数" value={form.minPlayer} onChange={(value) => setForm({ ...form, minPlayer: value })} min="1" tip="房间自动开始所需最少玩家数" />
                         <Field label="最大玩家数" value={form.maxPlayer} onChange={(value) => setForm({ ...form, maxPlayer: value })} min="1" tip="房间能容纳的玩家数" />
                         <Field label="选谱倒计时（秒）" value={form.selectCountdown} onChange={(value) => setForm({ ...form, selectCountdown: value })} min="10" tip="玩家进行投票所需要的时间" />
                         <Field label="准备倒计时（秒）" value={form.readyCountdown} onChange={(value) => setForm({ ...form, readyCountdown: value })} min="1" tip="给玩家准备（下载谱面）的时间" />
                         <Field label="强制结束倒计时（秒）" value={form.forceFinish} onChange={(value) => setForm({ ...form, forceFinish: value })} min="1" tip="强制切换房间状态的时间，从 Playing 到 SelectChart" />
                         <Field label="谱池刷新间隔（轮）" value={form.interval} onChange={(value) => setForm({ ...form, interval: value })} min="1" tip="经过填写的轮数之后，将进行谱池的轮换" />
+                        <div className="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
+                          <Label htmlFor="room-admins">房间管理员 ID</Label>
+                          <Input id="room-admins" value={form.adminIds} onChange={(event) => setForm({ ...form, adminIds: event.target.value })} placeholder="例如 1802, 1903" />
+                          <p className="text-xs font-normal text-muted-foreground">
+                            逗号分隔的用户 ID。这些人除了房主的操作外还可以开始本轮游戏；其余玩家按房主身份在客户端投票选谱。留空表示只有房主可以控制。
+                          </p>
+                        </div>
                         <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
                           <Switch id="chat-enable" checked={form.chatEnable} onCheckedChange={(checked) => setForm({ ...form, chatEnable: checked })} />
                           <label htmlFor="chat-enable" className="flex flex-col text-sm">

@@ -71,6 +71,8 @@ export type Room = {
     readyCountdown: number
     forceFinish: number
     interval: number
+    /** 房间管理员：可开始游戏，其余玩家按房主身份投票选谱 */
+    adminIds?: number[]
   }
   pool: RoomPool
 }
@@ -297,7 +299,7 @@ export const api = {
   deleteRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}`, { method: "DELETE" }),
   deletePool: (id: number) => request<{ ok: boolean }>(`/pool/${id}`, { method: "DELETE" }),
   createRoom: (id: string, pools: number[]) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/create`, { method: "POST", body: JSON.stringify({ type: "local", pools }) }),
-  updateRoom: (id: string, data: { live: boolean; lock: boolean; minPlayer: number; maxPlayer: number; chatEnable: boolean; selectCountdown?: number; readyCountdown?: number; forceFinish?: number; interval?: number }) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
+  updateRoom: (id: string, data: { live: boolean; lock: boolean; minPlayer: number; maxPlayer: number; chatEnable: boolean; selectCountdown?: number; readyCountdown?: number; forceFinish?: number; interval?: number; adminIds?: number[] }) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
   createPool: (id: number, chartIds: number[], favoriteId?: number | null,
                meta?: { category?: PoolCategory; sizeLimit?: number | null; roundsPerStay?: number | null }) =>
     request<{ ok: boolean }>("/pool", {
