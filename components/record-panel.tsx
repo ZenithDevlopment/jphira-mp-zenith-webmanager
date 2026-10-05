@@ -101,7 +101,13 @@ export function RecordPanel() {
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatTime(record.finishedAt)}</TableCell>
                         <TableCell className="font-mono text-xs">{record.roomId}</TableCell>
                         <TableCell className="max-w-[14rem] truncate text-sm" title={record.chartName}>{record.chartName}</TableCell>
-                        <TableCell>{record.results.length}</TableCell>
+                        <TableCell>
+                          {record.results.length > 0 ? (
+                            record.results.length
+                          ) : (
+                            <span className="text-xs text-muted-foreground">无人完成</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-sm">
                           {winner ? (
                             <span className="flex items-center gap-1.5">
