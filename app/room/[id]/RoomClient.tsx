@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { AnimatedTabs } from "@/components/ui/animated-tabs"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { toast } from "sonner"
 
 type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean }
 
@@ -57,7 +58,24 @@ export default function RoomClient({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room])
 
-  async function action(work: () => Promise<unknown>): Promise<boolean> { setBusy(true); setError(""); try { await work(); await load(); return true } catch (reason) { setError(reason instanceof Error ? reason.message : "操作失败"); return false } finally { setBusy(false) } }
+  async function action(work: () => Promise<unknown>): Promise<boolean> {
+    setBusy(true)
+    setError("")
+    try {
+      await work()
+      await load()
+      return true
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "操作失败"
+      setError(message)
+      // Also toast: the dialogs render above the page level error, so a failed save
+      // inside one would otherwise look like the button simply did nothing.
+      toast.error(message)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
   function number(name: keyof Omit<RoomForm, "chatEnable">) { return Number(form[name]) }
   if (error && !room) return <DetailState message={error} />
   if (!room) return <DetailState message="正在加载房间..." loading />
@@ -139,7 +157,18 @@ export default function RoomClient({ id }: { id: string }) {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <Button variant="destructive" size="sm" onClick={() => void action(() => api.endRoom(room.roomId))} disabled={busy || room.state !== "Playing"}><Square className="size-4" />强制结束</Button>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Button variant="destructive" size="sm" onClick={() => void action(() => api.endRoom(room.roomId))} disabled={busy || room.state !== "Playing"}><Square className="size-4" />强制结束</Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {room.state !== "Playing" ? "仅在对局进行中可用，当前为 " + room.state : "立即结束本轮并回到选谱"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </>
             )}
           </div>
