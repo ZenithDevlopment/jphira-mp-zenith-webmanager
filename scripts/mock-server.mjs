@@ -19,10 +19,11 @@ const pools = [
 ]
 // 管理员名单，与真实服务端的 data/admins.json 对应
 const admins = [2]
+const MAX_POOLS = 200
 let nextPoolId = 3
 let nextAdminId = 100
 // 假的谱面索引，够把筛选与生成流程跑通
-const indexedCharts = Array.from({ length: 120 }, (_, index) => {
+const makeChart = (index) => {
   const id = 5000 + index
   const configured = index % 3 === 0
   return {
@@ -36,10 +37,17 @@ const indexedCharts = Array.from({ length: 120 }, (_, index) => {
     durationSeconds: index % 10 === 0 ? 380 + index : 90 + index,
     tags: configured ? ["plain"] : ["regular"],
   }
-})
-const rooms = [room("lobby-main", true, 42, 1000, 0, [0, 1, 2], "Playing", staff), room("night-owl", false, 8, 32, 1, [1, 2], "WaitForReady"), room("zenith-test", true, 16, 64, 2, [2], "SelectChart")]
+}
+const indexedCharts = Array.from({ length: 120 }, (_, index) => makeChart(index))
+const missedCharts = Array.from({ length: 24 }, (_, index) => makeChart(120 + index))
+let refreshUntil = 0
+let fullSweepPending = false
+const rooms = [room("lobby-main", true, 42, 1000, 0, [0, 1, 2], "Playing", staff), room("night-owl", false, 8, 32, 1, [1, 2], "WaitForReady", null, 2), room("zenith-test", true, 16, 64, 2, [2], "SelectChart", null, null, [2])]
 
-function room(id, live, players, maxPlayer, currentPoolId, poolIds, state = "WaitForReady", playerIds = null) { return { roomId: id, state, live, locked: false, cycle: true, host: null, players: playerIds ? playerIds.map((pid) => ({ id: pid })) : Array.from({ length: players }, (_, index) => ({ id: index + 1 })), monitors: [], chart: null, type: "local", config: { minPlayer: 1, maxPlayer, selectCountdown: 30, readyCountdown: 10, forceFinish: 60, interval: 1 }, pool: { currentPool: pool(currentPoolId), pools: poolIds.map(pool).filter(Boolean), pendingPoolId: null, favoriteId: null, finishedRoundsSinceRefresh: 0, refreshIntervalRounds: 1 } } }
+// 玩家在游戏里创建的房间：最后一个成员离开（或被清空）时由服务端销毁；面板 / 控制台创建的房间会保留为空房
+const gameCreatedRooms = new WeakSet([findRoom("night-owl")])
+
+function room(id, live, players, maxPlayer, currentPoolId, poolIds, state = "WaitForReady", playerIds = null, host = null, adminIds = []) { return { roomId: id, state, live, locked: false, cycle: true, host, players: playerIds ? playerIds.map((pid) => ({ id: pid })) : Array.from({ length: players }, (_, index) => ({ id: index + 1 })), monitors: [], chart: null, type: "local", config: { minPlayer: 1, maxPlayer, selectCountdown: 30, readyCountdown: 10, forceFinish: 60, interval: 1, adminIds, chatEnable: true, cancelReadyInVote: true, startWhenAllReady: true, allReadyDelay: 5 }, pool: { currentPool: pool(currentPoolId), pools: poolIds.map(pool).filter(Boolean), pendingPoolId: null, favoriteId: null, finishedRoundsSinceRefresh: 0, refreshIntervalRounds: 1 } } }
 function pool(id) { return pools.find((item) => item.id === id) }
 
 const RULES = {
@@ -62,13 +70,17 @@ function json(response, body, status = 200) { response.writeHead(status, { "Cont
 // 服务端错误体用 reason，mock 保持一致，前端才能用同一套解析
 function fail(response, reason, status = 400) { json(response, { ok: false, reason }, status) }
 function authorized(request, response, write = false) { const token = request.headers.authorization?.replace(/^Bearer\s+/, ""); const session = token && tokens.get(token); if (!session) { fail(response, "未登录", 401); return false } if (write && !session.isAdmin) { fail(response, "需要管理员权限", 403); return false } return true }
+function sessionOf(request) { return tokens.get(request.headers.authorization?.replace(/^Bearer\s+/, "")) }
 async function body(request) { let value = ""; for await (const chunk of request) value += chunk; try { return JSON.parse(value || "{}") } catch { return {} } }
 
 async function api(request, response, path) {
   path = path.length > 1 ? path.replace(/\/+$/, "") : path
   const data = request.method === "GET" || request.method === "DELETE" ? {} : await body(request)
+  // 不下发 phira_token：Mock 环境由前端用测试账号临时换取（见 lib/api.ts 的 phiraToken）
   if (request.method === "POST" && path === "/login") { const token = `mock-${Date.now()}-${Math.random()}`; const isAdmin = String(data.email || "").toLowerCase().includes("admin"); const userId = 2; tokens.set(token, { isAdmin, userId }); return json(response, { ok: true, token, isAdmin, userId }) }
-  if (!authorized(request, response, request.method !== "GET")) return
+  // 清空房间对房主和房间管理员也开放（在路由里判断），其余写接口仍然只对管理员开放
+  const clear = request.method === "POST" ? path.match(/^\/room\/([^/]+)\/clear$/) : null
+  if (!authorized(request, response, request.method !== "GET" && !clear)) return
   if (request.method === "GET") {
     if (path === "/room/list") return json(response, { ok: true, rooms })
     if (path === "/pool/list") return json(response, { ok: true, pools })
@@ -77,13 +89,20 @@ async function api(request, response, path) {
       const query = new URL(request.url || "", "http://localhost").searchParams
       const category = (query.get("category") || "REGULAR").toUpperCase()
       const limit = Number(query.get("limit") || 50)
+      if (fullSweepPending && Date.now() >= refreshUntil) { indexedCharts.push(...missedCharts.splice(0)); fullSweepPending = false }
+      const refresh = query.get("refresh")
+      if (refresh !== null) {
+        const full = refresh === "full"
+        refreshUntil = Math.max(refreshUntil, Date.now() + (full ? 6000 : 2000))
+        if (full) fullSweepPending = true
+      }
       const matched = screen(category)
       return json(response, {
         ok: true,
         result: {
           indexed: indexedCharts.length,
-          remoteTotal: indexedCharts.length,
-          refreshing: false,
+          remoteTotal: indexedCharts.length + missedCharts.length,
+          refreshing: Date.now() < refreshUntil,
           matched: matched.length,
           charts: matched.slice(0, limit),
         },
@@ -93,6 +112,17 @@ async function api(request, response, path) {
   }
   if (request.method === "POST") {
     const createRoom = path.match(/^\/room\/([^/]+)\/create$/); if (createRoom) { const id = decodeURIComponent(createRoom[1]); const ids = Array.isArray(data.pools) ? data.pools.map(Number) : []; if (findRoom(id) || !ids.length || ids.some((poolId) => !pool(poolId))) return fail(response, "房间 ID 或谱池无效"); rooms.push(room(id, false, 0, 1000, ids[0], ids)); return json(response, { ok: true }) }
+    if (clear) {
+      const item = findRoom(decodeURIComponent(clear[1]))
+      if (!item) return fail(response, "房间不存在", 404)
+      const session = sessionOf(request)
+      // 全局管理员，或该房间的房主 / 房间管理员
+      if (!session.isAdmin && item.host !== session.userId && !item.config.adminIds.includes(session.userId)) return fail(response, "需要权限", 403)
+      const removed = item.players.length + item.monitors.length
+      item.players = []; item.monitors = []; item.host = null; item.state = "WaitForReady"
+      if (gameCreatedRooms.has(item)) rooms.splice(rooms.indexOf(item), 1)
+      return json(response, { ok: true, removed })
+    }
     const end = path.match(/^\/room\/([^/]+)\/end$/); if (end) { const item = findRoom(decodeURIComponent(end[1])); if (!item) return fail(response, "房间不存在", 404); item.live = false; item.state = "WaitForReady"; item.players = []; return json(response, { ok: true }) }
     if (path === "/pool") { const id = Number(data.id); const chartIds = Array.isArray(data.chartIds) ? data.chartIds.map(Number).filter(Number.isInteger) : []; const favoriteId = data.favoriteId == null ? null : Number(data.favoriteId); if (!Number.isInteger(id) || pool(id) || (favoriteId == null && !chartIds.length)) return fail(response, "谱池参数无效"); pools.push({ id, chartIds, favoriteId, default: false, category: data.category || "MANUAL", sizeLimit: data.sizeLimit ?? null, roundsPerStay: data.roundsPerStay ?? null, order: id * 10 }); return json(response, { ok: true }) }
     if (path === "/pool/batch") {
@@ -117,12 +147,15 @@ async function api(request, response, path) {
       const matched = screen(category)
       if (!matched.length) return fail(response, "没有匹配的谱面，先刷新谱面目录")
       const created = []
-      for (let start = 0; start < matched.length; start += sizeLimit) {
+      // 服务端最多 200 个池，放不下的匹配谱面计入 leftover
+      let placed = 0
+      for (let start = 0; start < matched.length && pools.length < MAX_POOLS; start += sizeLimit) {
         const slice = matched.slice(start, start + sizeLimit)
         pools.push({ id: nextPoolId, chartIds: slice.map((chart) => chart.id), favoriteId: null, default: false, category, sizeLimit, roundsPerStay, order: nextPoolId * 10 })
         created.push(nextPoolId++)
+        placed += slice.length
       }
-      return json(response, { ok: true, poolIds: created })
+      return json(response, { ok: true, poolIds: created, leftover: matched.length - placed })
     }
     if (path === "/chart/duration") {
       const ids = Array.isArray(data.chartIds) ? data.chartIds.map(Number) : []
@@ -131,7 +164,7 @@ async function api(request, response, path) {
     }
   }
   if (request.method === "PUT") {
-    const update = path.match(/^\/room\/([^/]+)\/update$/); if (update) { const item = findRoom(decodeURIComponent(update[1])); if (!item) return fail(response, "房间不存在", 404); item.live = Boolean(data.live); item.state = "WaitForReady"; item.locked = Boolean(data.lock); Object.assign(item.config, { minPlayer: Number(data.minPlayer), maxPlayer: Number(data.maxPlayer), selectCountdown: Number(data.selectCountdown), readyCountdown: Number(data.readyCountdown), forceFinish: Number(data.forceFinish), interval: Number(data.interval) }); return json(response, { ok: true }) }
+    const update = path.match(/^\/room\/([^/]+)\/update$/); if (update) { const item = findRoom(decodeURIComponent(update[1])); if (!item) return fail(response, "房间不存在", 404); if (data.allReadyDelay !== undefined && !(Number.isInteger(data.allReadyDelay) && data.allReadyDelay >= 0 && data.allReadyDelay <= 300)) return fail(response, "allReadyDelay 必须在 0 到 300 之间"); item.live = Boolean(data.live); item.state = "WaitForReady"; item.locked = Boolean(data.lock); Object.assign(item.config, { minPlayer: Number(data.minPlayer), maxPlayer: Number(data.maxPlayer), selectCountdown: Number(data.selectCountdown), readyCountdown: Number(data.readyCountdown), forceFinish: Number(data.forceFinish), interval: Number(data.interval) }); if (typeof data.chatEnable === "boolean") item.config.chatEnable = data.chatEnable; if (typeof data.cancelReadyInVote === "boolean") item.config.cancelReadyInVote = data.cancelReadyInVote; if (typeof data.startWhenAllReady === "boolean") item.config.startWhenAllReady = data.startWhenAllReady; if (data.allReadyDelay !== undefined) item.config.allReadyDelay = data.allReadyDelay; if (Array.isArray(data.adminIds)) item.config.adminIds = data.adminIds.map(Number).filter((id) => Number.isInteger(id) && id > 0); return json(response, { ok: true }) }
     const switchPool = path.match(/^\/room\/([^/]+)\/pool\/switch$/); if (switchPool) { const item = findRoom(decodeURIComponent(switchPool[1])); const target = pool(Number(data.poolId)); if (!item || !target || !item.pool.pools.some((candidate) => candidate.id === target.id)) return fail(response, "目标谱池无效"); item.pool.pendingPoolId = target.id; item.pool.currentPool = target; return json(response, { ok: true }) }
     const roomFavorite = path.match(/^\/room\/([^/]+)\/pool\/favorite$/); if (roomFavorite) { const item = findRoom(decodeURIComponent(roomFavorite[1])); if (!item) return fail(response, "房间不存在", 404); item.pool.favoriteId = data.favoriteId == null ? null : Number(data.favoriteId); return json(response, { ok: true }) }
     const favorite = path.match(/^\/pool\/(\d+)\/favorite$/); if (favorite) { const item = pool(Number(favorite[1])); if (!item) return fail(response, "谱池不存在", 404); item.favoriteId = data.favoriteId == null ? null : Number(data.favoriteId); return json(response, { ok: true }) }

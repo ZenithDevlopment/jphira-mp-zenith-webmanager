@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { api, POOL_CATEGORIES, type ChartSearchResult, type PoolCategory } from "@/lib/api"
 
 /**
@@ -25,6 +26,7 @@ export function PoolGenerator({ onGenerated }: { onGenerated?: () => void }) {
   const [preview, setPreview] = useState<ChartSearchResult | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [fullRefreshOpen, setFullRefreshOpen] = useState(false)
 
   const needsDuration = category === "TB"
 
@@ -56,7 +58,9 @@ export function PoolGenerator({ onGenerated }: { onGenerated?: () => void }) {
         roundsPerStay: roundsPerStay.trim() === "" ? undefined : Number(roundsPerStay),
         probeDuration: needsDuration && probeBudget.trim() !== "" ? Number(probeBudget) : undefined,
       })
-      toast.success(`已生成 ${data.poolIds.length} 个池`)
+      const leftover = data.leftover ?? 0
+      if (leftover > 0) toast.warning(`已生成 ${data.poolIds.length} 个池，另有 ${leftover} 张匹配的谱面因池数达到 200 上限未放入`)
+      else toast.success(`已生成 ${data.poolIds.length} 个池`)
       setPreview(null)
       setOpen(false)
       onGenerated?.()
@@ -67,12 +71,12 @@ export function PoolGenerator({ onGenerated }: { onGenerated?: () => void }) {
     }
   }
 
-  const refreshIndex = async () => {
+  const refreshIndex = async (full = false) => {
     setPreviewing(true)
     try {
-      const data = await api.searchCharts({ category, limit: 5, refresh: true })
+      const data = await api.searchCharts({ category, limit: 5, refresh: full ? "full" : true })
       setPreview(data.result)
-      toast.info("已在后台增量拉取谱面目录，稍后刷新查看")
+      toast.info(full ? "已在后台全量拉取谱面目录，需要几分钟，稍后刷新查看" : "已在后台增量拉取谱面目录，稍后刷新查看")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "刷新失败")
     } finally {
@@ -139,11 +143,18 @@ export function PoolGenerator({ onGenerated }: { onGenerated?: () => void }) {
             <Button variant="outline" size="sm" onClick={() => void refreshIndex()} disabled={previewing || generating}>
               刷新谱面目录
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setFullRefreshOpen(true)} disabled={previewing || generating}>
+              全量刷新目录
+            </Button>
             <Button size="sm" className="ml-auto" onClick={() => void generate()} disabled={generating}>
               {generating ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
               生成
             </Button>
           </div>
+
+          <p className="text-xs text-muted-foreground">
+            刷新谱面目录只拉取新增谱面，可能有遗漏；全量刷新会遍历整个列表，需要几分钟，请勿频繁使用。
+          </p>
 
           {preview && (
             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
@@ -171,6 +182,19 @@ export function PoolGenerator({ onGenerated }: { onGenerated?: () => void }) {
             </div>
           )}
         </div>
+
+        <AlertDialog open={fullRefreshOpen} onOpenChange={setFullRefreshOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认全量刷新谱面目录？</AlertDialogTitle>
+              <AlertDialogDescription>会在后台遍历整个谱面列表，需要几分钟，平时请使用刷新谱面目录。</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void refreshIndex(true)}>确认刷新</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   )

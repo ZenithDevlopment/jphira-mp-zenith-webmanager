@@ -73,6 +73,11 @@ export type Room = {
     interval: number
     /** 房间管理员：可开始游戏，其余玩家按房主身份投票选谱 */
     adminIds?: number[]
+    cancelReadyInVote?: boolean
+    startWhenAllReady?: boolean
+    allReadyDelay?: number
+    /** 是否允许房间内聊天；旧版服务端不返回该字段，按开启处理 */
+    chatEnable?: boolean
   }
   pool: RoomPool
 }
@@ -232,12 +237,22 @@ export const phiraApi = {
   },
 }
 
+/** 非 2xx 响应（401 除外）抛出的错误，message 取自服务端的 reason，status 供调用方区分 404 等情况 */
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? window.localStorage.getItem("zenith-token") : null
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } })
   if (response.status === 401) {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("zenith-token")
+      window.localStorage.removeItem("phira-token")
       window.localStorage.removeItem("zenith-session")
       if (window.location.pathname !== "/") window.location.assign("/")
     }
@@ -251,19 +266,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (error.reason) message = error.reason
       else if (error.message) message = error.message
     } catch { /* keep status fallback */ }
-    throw new Error(message)
+    throw new ApiError(message, response.status)
   }
   return response.json()
 }
 
 export const api = {
-  login: (email: string, password: string) => request<{ ok: boolean; token: string; isAdmin: boolean; userId: number }>("/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) => request<{ ok: boolean; token: string; isAdmin: boolean; userId: number; phira_token?: string }>("/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   rooms: () => request<{ ok: boolean; rooms: Room[] }>("/room/list"),
   room: (id: string) => request<{ ok: boolean; info: Room }>(`/room/${encodeURIComponent(id)}/`),
   switchRoomPool: (id: string, poolId: number) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/pool/switch`, { method: "PUT", body: JSON.stringify({ poolId }) }),
   setRoomFavorite: (id: string, favoriteId: number | null) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/pool/favorite`, { method: "PUT", body: JSON.stringify({ favoriteId }) }),
   pools: () => request<{ ok: boolean; pools: Pool[] }>("/pool/list"),
   endRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}/end`, { method: "POST" }),
+  /** 移除并断开房间内所有玩家和观战者（对局进行中则随之结束）。全局管理员、房主或房间管理员可用 */
+  clearRoom: (id: string) => request<{ ok: boolean; removed: number }>(`/room/${encodeURIComponent(id)}/clear`, { method: "POST" }),
   /** 以系统消息形式推送到单个房间（客户端按 senderId=-1 渲染） */
   sayToRoom: (id: string, message: string) => request<{ ok: boolean; delivered: number }>(`/room/${encodeURIComponent(id)}/say`, { method: "POST", body: JSON.stringify({ message }) }),
   /** 全服广播 */
@@ -299,7 +316,7 @@ export const api = {
   deleteRoom: (id: string) => request<{ ok: boolean }>(`/room/${id}`, { method: "DELETE" }),
   deletePool: (id: number) => request<{ ok: boolean }>(`/pool/${id}`, { method: "DELETE" }),
   createRoom: (id: string, pools: number[]) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/create`, { method: "POST", body: JSON.stringify({ type: "local", pools }) }),
-  updateRoom: (id: string, data: { live: boolean; lock: boolean; minPlayer: number; maxPlayer: number; chatEnable: boolean; selectCountdown?: number; readyCountdown?: number; forceFinish?: number; interval?: number; adminIds?: number[] }) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
+  updateRoom: (id: string, data: { live: boolean; lock: boolean; minPlayer: number; maxPlayer: number; chatEnable: boolean; cancelReadyInVote: boolean; startWhenAllReady: boolean; allReadyDelay: number; selectCountdown?: number; readyCountdown?: number; forceFinish?: number; interval?: number; adminIds?: number[] }) => request<{ ok: boolean }>(`/room/${encodeURIComponent(id)}/update`, { method: "PUT", body: JSON.stringify(data) }),
   createPool: (id: number, chartIds: number[], favoriteId?: number | null,
                meta?: { category?: PoolCategory; sizeLimit?: number | null; roundsPerStay?: number | null }) =>
     request<{ ok: boolean }>("/pool", {
@@ -328,7 +345,7 @@ export const api = {
     minDifficulty?: number
     minDuration?: number
     limit?: number
-    refresh?: boolean
+    refresh?: boolean | "full"
     division?: "plain"
     /** TB 专用：先按预算探测时长再筛选，否则未探测的谱面永远不匹配 6 分钟门槛 */
     probeDuration?: number
@@ -341,9 +358,9 @@ export const api = {
     return request<{ ok: boolean; result: ChartSearchResult }>(`/chart/search${suffix ? `?${suffix}` : ""}`)
   },
 
-  /** 把匹配到的谱面按 sizeLimit 切成多个池。probeDuration 仅 TB 需要。 */
+  /** 把匹配到的谱面按 sizeLimit 切成多个池。probeDuration 仅 TB 需要。leftover 为因 200 个池上限而未放入的匹配谱面数。 */
   generatePools: (body: { category: PoolCategory; sizeLimit?: number; roundsPerStay?: number; probeDuration?: number }) =>
-    request<{ ok: boolean; poolIds: number[] }>("/pool/generate", { method: "POST", body: JSON.stringify(body) }),
+    request<{ ok: boolean; poolIds: number[]; leftover?: number }>("/pool/generate", { method: "POST", body: JSON.stringify(body) }),
 
   probeDurations: (chartIds: number[]) =>
     request<{ ok: boolean; probed: number; charts: PhiraChart[] }>("/chart/duration", { method: "POST", body: JSON.stringify({ chartIds }) }),

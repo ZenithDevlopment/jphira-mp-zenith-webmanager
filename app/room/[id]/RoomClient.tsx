@@ -1,11 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, ExternalLink, HelpCircle, Layers, RefreshCw, Save, Settings, Square, Users } from "lucide-react"
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { ArrowLeft, Eraser, ExternalLink, HelpCircle, Layers, RefreshCw, Save, Settings, Square, Users } from "lucide-react"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { api, type Room, phiraApi, type PhiraUser } from "@/lib/api"
+import { api, ApiError, type Room, phiraApi, type PhiraUser } from "@/lib/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 
-type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean; adminIds: string }
+type RoomForm = { minPlayer: string; maxPlayer: string; selectCountdown: string; readyCountdown: string; forceFinish: string; interval: string; chatEnable: boolean; locked: boolean; cancelReadyInVote: boolean; startWhenAllReady: boolean; allReadyDelay: string; adminIds: string }
 
 export default function RoomClient({ id }: { id: string }) {
   const pathname = usePathname()
@@ -27,21 +27,25 @@ export default function RoomClient({ id }: { id: string }) {
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [userId, setUserId] = useState<number | null>(null)
   const [configOpen, setConfigOpen] = useState(false)
   const [poolOpen, setPoolOpen] = useState(false)
-  const [form, setForm] = useState<RoomForm>({ minPlayer: "", maxPlayer: "", selectCountdown: "", readyCountdown: "", forceFinish: "", interval: "", chatEnable: true, adminIds: "" })
+  const [clearOpen, setClearOpen] = useState(false)
+  const [form, setForm] = useState<RoomForm>({ minPlayer: "", maxPlayer: "", selectCountdown: "", readyCountdown: "", forceFinish: "", interval: "", chatEnable: true, locked: false, cancelReadyInVote: true, startWhenAllReady: true, allReadyDelay: "5", adminIds: "" })
   const [profiles, setProfiles] = useState<Record<number, PhiraUser | null>>({})
   const [selected, setSelected] = useState<PhiraUser | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
 
-  async function load() {
+  /** Refreshes the view. Resolves true when the server says the room no longer exists. */
+  async function load(): Promise<boolean> {
     try {
       const result = await api.room(roomId)
       setRoom(result.info)
-      setForm({ minPlayer: String(result.info.config.minPlayer), maxPlayer: String(result.info.config.maxPlayer), selectCountdown: String(result.info.config.selectCountdown), readyCountdown: String(result.info.config.readyCountdown), forceFinish: String(result.info.config.forceFinish), interval: String(result.info.config.interval), chatEnable: true, adminIds: (result.info.config.adminIds ?? []).join(", ") })
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载房间") }
+      setForm({ minPlayer: String(result.info.config.minPlayer), maxPlayer: String(result.info.config.maxPlayer), selectCountdown: String(result.info.config.selectCountdown), readyCountdown: String(result.info.config.readyCountdown), forceFinish: String(result.info.config.forceFinish), interval: String(result.info.config.interval), chatEnable: result.info.config.chatEnable ?? true, locked: result.info.locked, cancelReadyInVote: result.info.config.cancelReadyInVote ?? true, startWhenAllReady: result.info.config.startWhenAllReady ?? true, allReadyDelay: String(result.info.config.allReadyDelay ?? 5), adminIds: (result.info.config.adminIds ?? []).join(", ") })
+      return false
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "无法加载房间"); return reason instanceof ApiError && reason.status === 404 }
   }
-  useEffect(() => { void load(); try { setIsAdmin(Boolean((JSON.parse(window.localStorage.getItem("zenith-session") || "null") as { isAdmin?: boolean } | null)?.isAdmin)) } catch { setIsAdmin(false) } }, [roomId])
+  useEffect(() => { void load(); try { const session = JSON.parse(window.localStorage.getItem("zenith-session") || "null") as { isAdmin?: boolean; userId?: number } | null; setIsAdmin(Boolean(session?.isAdmin)); setUserId(typeof session?.userId === "number" ? session.userId : null) } catch { setIsAdmin(false); setUserId(null) } }, [roomId])
 
   // 动态拉取在线玩家的头像/昵称等资料（phira.5wyxi.com/user/{id}）
   useEffect(() => {
@@ -58,12 +62,13 @@ export default function RoomClient({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room])
 
-  async function action(work: () => Promise<unknown>): Promise<boolean> {
+  async function action(work: () => Promise<unknown>, afterLoad?: (roomGone: boolean) => void): Promise<boolean> {
     setBusy(true)
     setError("")
     try {
       await work()
-      await load()
+      const roomGone = await load()
+      afterLoad?.(roomGone)
       return true
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "操作失败"
@@ -76,13 +81,27 @@ export default function RoomClient({ id }: { id: string }) {
       setBusy(false)
     }
   }
-  function number(name: keyof Omit<RoomForm, "chatEnable" | "adminIds">) { return Number(form[name]) }
+  function number(name: keyof Omit<RoomForm, "chatEnable" | "locked" | "cancelReadyInVote" | "startWhenAllReady" | "adminIds">) { return Number(form[name]) }
   /** Accepts "1, 2 3" and ignores empties; the server rejects non positive ids. */
   function parseAdminIds(raw: string) {
     return raw.split(/[^0-9]+/).filter(Boolean).map(Number)
   }
   if (error && !room) return <DetailState message={error} />
   if (!room) return <DetailState message="正在加载房间..." loading />
+
+  // Clearing is open to global admins and to whoever controls the room: its host or a room admin.
+  const controlsRoom = userId !== null && (room.host === userId || (room.config.adminIds ?? []).includes(userId))
+  const canClear = isAdmin || controlsRoom
+  const roomEmpty = room.players.length === 0 && room.monitors.length === 0
+  function clearRoom(target: string) {
+    let removed = 0
+    void action(async () => { removed = (await api.clearRoom(target)).removed }, (roomGone) => {
+      // Rooms players created in game are destroyed by the server once empty, so the refresh finding
+      // no room is the expected outcome: say so and fall through to the page's not-found state.
+      toast.success(roomGone ? `房间已清空（已移除 ${removed} 人），房间已无人，已自动关闭` : `房间已清空（已移除 ${removed} 人）`)
+      if (roomGone) setRoom(null)
+    })
+  }
 
   return (
     <main className="p-5 lg:p-8">
@@ -105,7 +124,7 @@ export default function RoomClient({ id }: { id: string }) {
                       <AlertDialogDescription>调整房间运行参数，保存后将立即生效。</AlertDialogDescription>
                     </AlertDialogHeader>
                     <TooltipProvider delayDuration={200}>
-                      <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: room.locked, chatEnable: form.chatEnable, selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval"), adminIds: parseAdminIds(form.adminIds) })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
+                      <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(() => api.updateRoom(room.roomId, { minPlayer: number("minPlayer"), maxPlayer: number("maxPlayer"), live: room.live, lock: form.locked, chatEnable: form.chatEnable, cancelReadyInVote: form.cancelReadyInVote, startWhenAllReady: form.startWhenAllReady, allReadyDelay: number("allReadyDelay"), selectCountdown: number("selectCountdown"), readyCountdown: number("readyCountdown"), forceFinish: number("forceFinish"), interval: number("interval"), adminIds: parseAdminIds(form.adminIds) })).then((ok) => { if (ok) setConfigOpen(false) }) }}>
                         <Field label="最低玩家数" value={form.minPlayer} onChange={(value) => setForm({ ...form, minPlayer: value })} min="1" tip="房间自动开始所需最少玩家数" />
                         <Field label="最大玩家数" value={form.maxPlayer} onChange={(value) => setForm({ ...form, maxPlayer: value })} min="1" tip="房间能容纳的玩家数" />
                         <Field label="选谱倒计时（秒）" value={form.selectCountdown} onChange={(value) => setForm({ ...form, selectCountdown: value })} min="10" tip="玩家进行投票所需要的时间" />
@@ -126,6 +145,28 @@ export default function RoomClient({ id }: { id: string }) {
                             <span className="text-xs font-normal text-muted-foreground">允许玩家在房间内发送消息</span>
                           </label>
                         </div>
+                        <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
+                          <Switch id="room-lock" checked={form.locked} onCheckedChange={(checked) => setForm({ ...form, locked: checked })} />
+                          <label htmlFor="room-lock" className="flex flex-col text-sm">
+                            <span className="font-medium">锁定房间</span>
+                            <span className="text-xs font-normal text-muted-foreground">房间内有玩家时，拒绝新玩家加入</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
+                          <Switch id="cancel-ready-in-vote" checked={form.cancelReadyInVote} onCheckedChange={(checked) => setForm({ ...form, cancelReadyInVote: checked })} />
+                          <label htmlFor="cancel-ready-in-vote" className="flex flex-col text-sm">
+                            <span className="font-medium">投票时可取消准备</span>
+                            <span className="text-xs font-normal text-muted-foreground">选谱投票阶段已准备的玩家可以取消准备</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
+                          <Switch id="start-when-all-ready" checked={form.startWhenAllReady} onCheckedChange={(checked) => setForm({ ...form, startWhenAllReady: checked })} />
+                          <label htmlFor="start-when-all-ready" className="flex flex-col text-sm">
+                            <span className="font-medium">全员准备后提前开始</span>
+                            <span className="text-xs font-normal text-muted-foreground">在线玩家全部准备后提前开局（观战者不计），关闭则等满准备倒计时</span>
+                          </label>
+                        </div>
+                        <Field label="全员准备后延迟（秒）" value={form.allReadyDelay} onChange={(value) => setForm({ ...form, allReadyDelay: value })} min="0" max="300" disabled={!form.startWhenAllReady} tip="全员准备后等待这么久再开始，0 表示立即开始，范围 0 到 300" />
                         <AlertDialogFooter className="sm:col-span-2">
                           <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
                           <Button type="submit" disabled={busy}><Save className="size-4" />保存配置</Button>
@@ -182,6 +223,34 @@ export default function RoomClient({ id }: { id: string }) {
                 </TooltipProvider>
               </>
             )}
+            {canClear && (
+              <>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Button variant="destructive" size="sm" onClick={() => setClearOpen(true)} disabled={busy || roomEmpty}><Eraser className="size-4" />清空房间</Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {roomEmpty ? "房间内没有玩家" : "移除并断开房间内的所有成员"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>确认清空房间？</AlertDialogTitle>
+                      <AlertDialogDescription>房间内的所有玩家和观战者都会被移出并断开连接，正在进行的一轮游戏会随之结束。被移出的人需要自行重新加入房间。</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => clearRoom(room.roomId)}>确认清空</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
           </div>
         </div>
 
@@ -211,6 +280,9 @@ export default function RoomClient({ id }: { id: string }) {
               <Row label="选谱倒计时" value={`${room.config.selectCountdown} 秒`} />
               <Row label="准备倒计时" value={`${room.config.readyCountdown} 秒`} />
               <Row label="强制结束" value={`${room.config.forceFinish} 秒`} />
+              <Row label="投票时取消准备" value={(room.config.cancelReadyInVote ?? true) ? "是" : "否"} />
+              <Row label="全员准备后开始" value={(room.config.startWhenAllReady ?? true) ? "是" : "否"} />
+              <Row label="全员准备后延迟" value={`${room.config.allReadyDelay ?? 5} 秒`} />
             </CardContent>
           </Card>
         </div>
@@ -316,7 +388,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Row({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between border-b pb-2"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}</span></div>
 }
-function Field({ label, value, onChange, min, tip }: { label: string; value: string; onChange: (value: string) => void; min: string; tip?: string }) {
+function Field({ label, value, onChange, min, max, disabled, tip }: { label: string; value: string; onChange: (value: string) => void; min: string; max?: string; disabled?: boolean; tip?: string }) {
   return (
     <label className="flex flex-col gap-1.5 text-sm font-medium">
       <span className="inline-flex items-center gap-1">
@@ -332,7 +404,7 @@ function Field({ label, value, onChange, min, tip }: { label: string; value: str
           </Tooltip>
         )}
       </span>
-      <Input required type="number" min={min} value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input required type="number" min={min} max={max} disabled={disabled} className="disabled:cursor-not-allowed disabled:opacity-50" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   )
 }

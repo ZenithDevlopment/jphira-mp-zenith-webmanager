@@ -315,7 +315,9 @@ function SubmitDialog({ poolId, onClose, onDone }: { poolId: number | null; onCl
       if (rejected.length === 0) {
         toast.success(`已投稿 ${result.accepted} 张谱面`)
       } else {
-        toast.warning(`成功 ${result.accepted} 张，${rejected.length} 张未接受（${rejected[0].reason ?? ""}）`)
+        toast.warning(`成功 ${result.accepted} 张，${rejected.length} 张未接受`, {
+          description: rejected.map((item) => `${results.find((chart) => chart.id === item.chartId)?.name ?? `谱面 ${item.chartId}`}：${item.reason ?? "未接受"}`).join("；"),
+        })
       }
       onClose()
       onDone()

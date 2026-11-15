@@ -57,7 +57,7 @@ export default function Dashboard() {
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null)
   const [createTarget, setCreateTarget] = useState<"room" | "pool" | null>(null)
   const [roomId, setRoomId] = useState("")
-  const [roomPools, setRoomPools] = useState("0")
+  const [roomPools, setRoomPools] = useState("")
   const [poolId, setPoolId] = useState("")
   const [chartIds, setChartIds] = useState("")
   const [poolFavoriteId, setPoolFavoriteId] = useState("")
@@ -83,14 +83,14 @@ export default function Dashboard() {
       setRooms(roomData.rooms)
       setPools(poolData.pools)
     } catch (reason) {
-      if (reason instanceof Error && reason.message === "未登录") { window.localStorage.removeItem("zenith-token"); window.localStorage.removeItem("zenith-session"); setSession(null); toast.error("登录已失效", { description: "请重新登录" }) }
+      if (reason instanceof Error && reason.message === "未登录") { window.localStorage.removeItem("zenith-token"); window.localStorage.removeItem("phira-token"); window.localStorage.removeItem("zenith-session"); setSession(null); toast.error("登录已失效", { description: "请重新登录" }) }
       else toast.error("无法连接 API", { description: reason instanceof Error ? reason.message : "请确认后端 API 服务" })
     } finally { setLoading(false) }
   }
   useEffect(() => {
     const stored = window.localStorage.getItem("zenith-session")
     let current: Session | null = null
-    try { current = stored ? JSON.parse(stored) as Session : null } catch { window.localStorage.removeItem("zenith-session"); window.localStorage.removeItem("zenith-token") }
+    try { current = stored ? JSON.parse(stored) as Session : null } catch { window.localStorage.removeItem("zenith-session"); window.localStorage.removeItem("zenith-token"); window.localStorage.removeItem("phira-token") }
     setSession(current)
     if (current?.token) { void load(); void fetchProfile(current.userId) }
     else setLoading(false)
@@ -106,11 +106,11 @@ export default function Dashboard() {
   }
   async function login(event: React.FormEvent) {
     event.preventDefault(); setLoggingIn(true)
-    try { const result = await api.login(email, password); const nextSession = { token: result.token, isAdmin: result.isAdmin, email, userId: result.userId }; window.localStorage.setItem("zenith-token", result.token); window.localStorage.setItem("zenith-session", JSON.stringify(nextSession)); setSession(nextSession); toast.success("登录成功"); void fetchProfile(result.userId); await load() }
+    try { const result = await api.login(email, password); const nextSession = { token: result.token, isAdmin: result.isAdmin, email, userId: result.userId }; window.localStorage.setItem("zenith-token", result.token); if (result.phira_token) window.localStorage.setItem("phira-token", result.phira_token); window.localStorage.setItem("zenith-session", JSON.stringify(nextSession)); setSession(nextSession); toast.success("登录成功"); void fetchProfile(result.userId); await load() }
     catch (reason) { toast.error("登录失败", { description: reason instanceof Error ? reason.message : "请检查账号和密码" }) }
     finally { setLoggingIn(false) }
   }
-  function logout() { window.localStorage.removeItem("zenith-token"); window.localStorage.removeItem("zenith-session"); setSession(null); setProfile(null); toast.success("已退出登录") }
+  function logout() { window.localStorage.removeItem("zenith-token"); window.localStorage.removeItem("phira-token"); window.localStorage.removeItem("zenith-session"); setSession(null); setProfile(null); toast.success("已退出登录") }
 
   async function action(work: () => Promise<unknown>, success: string) {
     try { await work(); toast.success(success); await load() }
@@ -124,7 +124,9 @@ export default function Dashboard() {
   }
   function createRoom(event: React.FormEvent) {
     event.preventDefault()
-    void action(() => api.createRoom(roomId.trim(), roomPools.split(",").map(Number).filter(Number.isFinite)), "房间已创建").then(() => { setRoomId(""); setCreateTarget(null) })
+    // Blank entries are dropped: Number("") is 0, so an empty field used to create a room holding only pool 0.
+    const pools = roomPools.split(/[,，\s]+/).filter(Boolean).map(Number).filter(Number.isInteger)
+    void action(() => api.createRoom(roomId.trim(), pools), "房间已创建").then(() => { setRoomId(""); setCreateTarget(null) })
   }
   async function createPool(event: React.FormEvent) {
     event.preventDefault()
@@ -278,7 +280,7 @@ export default function Dashboard() {
             <>
               <AlertDialogHeader>
                 <AlertDialogTitle>创建房间</AlertDialogTitle>
-                <AlertDialogDescription>{"创建房间并固化谱池列表，房间 ID 需匹配 ^[A-Za-z0-9_-]{1,20}$。"}</AlertDialogDescription>
+                <AlertDialogDescription>{"创建房间并设定谱池轮换顺序，房间 ID 需匹配 ^[A-Za-z0-9_-]{1,20}$。"}</AlertDialogDescription>
               </AlertDialogHeader>
               <form onSubmit={createRoom} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
@@ -286,8 +288,9 @@ export default function Dashboard() {
                   <Input id="create-room-id" autoFocus required pattern="[A-Za-z0-9_-]{1,20}" value={roomId} onChange={(event) => setRoomId(event.target.value)} placeholder="例如 tournament-01" />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="create-room-pools">固化谱池 ID（逗号分隔）</Label>
-                  <Input id="create-room-pools" required value={roomPools} onChange={(event) => setRoomPools(event.target.value)} placeholder="0,1" />
+                  <Label htmlFor="create-room-pools">轮换谱池 ID（按轮换顺序，逗号分隔）</Label>
+                  <Input id="create-room-pools" value={roomPools} onChange={(event) => setRoomPools(event.target.value)} placeholder="例如 1,2,3；留空=全部默认启用的谱池" />
+                  <p className="text-xs text-muted-foreground">只填一个谱池时房间不会轮换。空池会被跳过。</p>
                 </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel>取消</AlertDialogCancel>
